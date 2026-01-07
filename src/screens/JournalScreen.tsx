@@ -1,0 +1,1359 @@
+import React, {useState, useRef, useEffect} from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  Alert,
+  Platform,
+  PermissionsAndroid,
+  Image,
+  Linking,
+  ActivityIndicator,
+} from 'react-native';
+import {Picker} from '@react-native-picker/picker';
+import auth from '@react-native-firebase/auth';
+import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import DocumentPicker from 'react-native-document-picker';
+import storage from '@react-native-firebase/storage';
+import firestore from '@react-native-firebase/firestore';
+import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {generatePrompt, transcribeVoice, getReflection} from '../services/sophyApi';
+import {useSubscription} from '../hooks/useSubscription';
+import {
+  checkAIAccess,
+  incrementAIUsage,
+  getRemainingAICalls,
+  AI_DAILY_LIMIT,
+} from '../services/aiUsageService';
+import PaywallModal from '../components/PaywallModal';
+import type {TabScreenProps} from '../navigation/types';
+
+const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
+  // Subscription hook for feature gating
+  const {
+    checkFeatureAndShowPaywall,
+    isPremium,
+    isConnect,
+    showPaywall,
+    closePaywall,
+  } = useSubscription();
+
+  // Add Settings button to header
+  useEffect(() => {
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Settings')}
+          style={{marginRight: 16}}>
+          <Text style={{fontSize: 24}}>⚙️</Text>
+        </TouchableOpacity>
+      ),
+    });
+  }, [navigation]);
+
+  // Prompt Section state
+  const [promptTopic, setPromptTopic] = useState('');
+  const [generatedPrompt, setGeneratedPrompt] = useState('');
+  const [savePromptChecked, setSavePromptChecked] = useState(false);
+  const [generatingPrompt, setGeneratingPrompt] = useState(false);
+
+  // InkOutLoud Voice Recording state
+  const [audioRecorderPlayer] = useState(() => new AudioRecorderPlayer());
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingDuration, setRecordingDuration] = useState('00:00');
+  const [recordingPath, setRecordingPath] = useState('');
+
+  // File Attachments state
+  const [attachments, setAttachments] = useState<Array<{uri: string; name: string; type: string; size: number}>>([]);
+  const [uploadingFiles, setUploadingFiles] = useState(false);
+
+  // Cleanup audio recorder on unmount
+  useEffect(() => {
+    return () => {
+      if (audioRecorderPlayer) {
+        audioRecorderPlayer.removeRecordBackListener();
+      }
+    };
+  }, [audioRecorderPlayer]);
+
+  // Journal state
+  const [journalEntry, setJournalEntry] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  // Sophy Reflection state
+  const [sophyReflection, setSophyReflection] = useState('');
+  const [saveReflectionChecked, setSaveReflectionChecked] = useState(false);
+  const [generatingReflection, setGeneratingReflection] = useState(false);
+
+  // AI Usage tracking state
+  const [aiCallsRemaining, setAiCallsRemaining] = useState<number>(AI_DAILY_LIMIT);
+  
+  // Load AI usage on mount
+  useEffect(() => {
+    const loadAIUsage = async () => {
+      if (!isPremium) {
+        const remaining = await getRemainingAICalls();
+        setAiCallsRemaining(remaining);
+      }
+    };
+    loadAIUsage();
+  }, [isPremium]);
+
+  // Practitioner send state
+  const [sendToPractitioner, setSendToPractitioner] = useState(false);
+  const [selectedPractitionerId, setSelectedPractitionerId] = useState<string>('');
+  const [practitioners, setPractitioners] = useState<Array<{id: string; name: string; email: string}>>([]);
+  const [loadingPractitioners, setLoadingPractitioners] = useState(false);
+
+  // AI gating helper - checks access and shows appropriate message
+  const checkAndUseAI = async (featureName: string): Promise<boolean> => {
+    // Plus and Connect users have unlimited access
+    if (isPremium) {
+      return true;
+    }
+    
+    const access = await checkAIAccess();
+    if (!access.canUse) {
+      Alert.alert(
+        'Daily Limit Reached',
+        `You've used all ${AI_DAILY_LIMIT} free AI calls today. Upgrade to Plus for unlimited access to Sophy's insights!`,
+        [
+          { text: 'Maybe Later', style: 'cancel' },
+          { text: 'Upgrade', onPress: () => checkFeatureAndShowPaywall('ai') },
+        ]
+      );
+      return false;
+    }
+    return true;
+  };
+
+  // Update remaining count after AI use
+  const afterAIUse = async () => {
+    if (!isPremium) {
+      await incrementAIUsage();
+      const remaining = await getRemainingAICalls();
+      setAiCallsRemaining(remaining);
+    }
+  };
+
+  const handleGeneratePrompt = async () => {
+    // Check AI access for free users
+    const canProceed = await checkAndUseAI('prompt generation');
+    if (!canProceed) return;
+
+    setGeneratingPrompt(true);
+    setGeneratedPrompt(''); // Clear previous prompt
+    
+    try {
+      const prompt = await generatePrompt(promptTopic);
+      setGeneratedPrompt(prompt);
+      setSavePromptChecked(true); // Auto-check to save prompt
+      await afterAIUse(); // Track usage
+    } catch (error: any) {
+      console.error('Error generating prompt:', error);
+      Alert.alert(
+        'Error', 
+        error.message || 'Failed to generate prompt. Please try again.'
+      );
+    } finally {
+      setGeneratingPrompt(false);
+    }
+  };
+
+  const handleGetReflection = async () => {
+    // Check AI access for free users
+    const canProceed = await checkAndUseAI('reflection');
+    if (!canProceed) return;
+
+    if (!journalEntry.trim()) {
+      Alert.alert(
+        'Empty Entry',
+        'Please write something in your journal first, then Sophy can reflect on it.',
+      );
+      return;
+    }
+
+    setGeneratingReflection(true);
+    setSophyReflection(''); // Clear previous reflection
+
+    try {
+      const reflection = await getReflection(journalEntry);
+      setSophyReflection(reflection);
+      await afterAIUse(); // Track usage;
+      setSaveReflectionChecked(true); // Auto-check to save reflection
+    } catch (error: any) {
+      console.error('Error getting reflection:', error);
+      Alert.alert(
+        'Error',
+        error.message || 'Failed to get reflection. Please try again.',
+      );
+    } finally {
+      setGeneratingReflection(false);
+    }
+  };
+
+  // Load practitioners when component mounts
+  useEffect(() => {
+    loadPractitioners();
+  }, []);
+
+  const loadPractitioners = async () => {
+    const user = auth().currentUser;
+    if (!user) return;
+
+    setLoadingPractitioners(true);
+    try {
+      // Get user's document to find their practitioners
+      const userDoc = await firestore().collection('users').doc(user.uid).get();
+      const userData = userDoc.data();
+      
+      if (!userData?.practitioners || userData.practitioners.length === 0) {
+        setPractitioners([]);
+        return;
+      }
+
+      // Load practitioner details
+      const practitionerDocs = await Promise.all(
+        userData.practitioners.map((practId: string) =>
+          firestore().collection('practitioners').doc(practId).get()
+        )
+      );
+
+      const loadedPractitioners = practitionerDocs
+        .filter(doc => doc.exists)
+        .map(doc => ({
+          id: doc.id,
+          name: doc.data()?.displayName || doc.data()?.email || 'Practitioner',
+          email: doc.data()?.email || '',
+        }));
+
+      setPractitioners(loadedPractitioners);
+      
+      // Auto-select first practitioner if available
+      if (loadedPractitioners.length > 0 && !selectedPractitionerId) {
+        setSelectedPractitionerId(loadedPractitioners[0].id);
+      }
+    } catch (error) {
+      console.error('Error loading practitioners:', error);
+    } finally {
+      setLoadingPractitioners(false);
+    }
+  };
+
+  const requestMicrophonePermission = async (): Promise<boolean> => {
+    if (Platform.OS === 'android') {
+      try {
+        const granted = await PermissionsAndroid.request(
+          PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
+          {
+            title: 'Microphone Permission',
+            message: 'InkWell needs access to your microphone to record voice journal entries.',
+            buttonNeutral: 'Ask Me Later',
+            buttonNegative: 'Cancel',
+            buttonPositive: 'OK',
+          },
+        );
+        return granted === PermissionsAndroid.RESULTS.GRANTED;
+      } catch (err) {
+        console.warn(err);
+        return false;
+      }
+    }
+    return true; // iOS handles permission via Info.plist
+  };
+
+  const handleStartRecording = async () => {
+    console.log('🎙️ Starting recording...');
+    console.log('audioRecorderPlayer:', audioRecorderPlayer);
+    
+    if (!audioRecorderPlayer) {
+      Alert.alert(
+        'Simulator Limitation',
+        'Voice recording may not work on iOS Simulator. Please test on a real device for full InkOutLoud functionality.',
+      );
+      return;
+    }
+
+    const hasPermission = await requestMicrophonePermission();
+    if (!hasPermission) {
+      Alert.alert('Permission Denied', 'Microphone access is required for voice recording.');
+      return;
+    }
+
+    try {
+      const path = Platform.select({
+        ios: 'inkwell-recording.m4a',
+        android: 'sdcard/inkwell-recording.mp4',
+      });
+
+      console.log('📁 Recording path:', path);
+      const result = await audioRecorderPlayer.startRecorder(path);
+      console.log('✅ Recording started:', result);
+      
+      audioRecorderPlayer.addRecordBackListener((e) => {
+        const duration = audioRecorderPlayer.mmssss(
+          Math.floor(e.currentPosition),
+        ).substring(0, 5);
+        setRecordingDuration(duration);
+      });
+      
+      setIsRecording(true);
+      setRecordingPath(path || '');
+    } catch (error: any) {
+      console.error('Recording error:', error);
+      Alert.alert(
+        'Recording Failed',
+        Platform.OS === 'ios'
+          ? 'Voice recording is not supported on iOS Simulator. Please test on a real device.'
+          : 'Failed to start recording. Please check microphone permissions.',
+      );
+    }
+  };
+
+  const handleStopRecording = async () => {
+    try {
+      const result = await audioRecorderPlayer.stopRecorder();
+      audioRecorderPlayer.removeRecordBackListener();
+      setIsRecording(false);
+      setRecordingDuration('00:00');
+      
+      // Check if user has Plus for AI transcription + emotional analysis
+      if (isPremium) {
+        // Plus/Connect users get full AI transcription with emotional analysis
+        Alert.alert(
+          'Processing Voice...',
+          'Transcribing with AI and analyzing emotional patterns. This may take a moment.',
+        );
+        
+        try {
+          // Upload and transcribe the audio file with AI
+          const transcriptionResult = await transcribeVoice(result);
+          
+          // Insert cleaned text into journal entry
+          setJournalEntry(
+            (prevText) =>
+              prevText + (prevText ? ' ' : '') + transcriptionResult.cleanedText,
+          );
+          
+          Alert.alert(
+            '✨ Voice Transcribed!',
+            'Your voice has been transcribed with clean grammar and emotional insights.',
+          );
+          
+          // Show emotional insights if available
+          if (transcriptionResult.emotionalInsights) {
+            console.log(
+              'Emotional insights:',
+              transcriptionResult.emotionalInsights,
+            );
+            // Display Sophy insight if available
+            if (transcriptionResult.emotionalInsights.sophyInsight) {
+              setSophyReflection(transcriptionResult.emotionalInsights.sophyInsight);
+              setSaveReflectionChecked(true);
+            }
+          }
+        } catch (transcriptionError: any) {
+          console.error('Transcription error:', transcriptionError);
+          Alert.alert(
+            'Transcription Failed',
+            transcriptionError.message ||
+              'Could not transcribe audio. Please try again.',
+          );
+        }
+      } else {
+        // Free users get basic device recording saved but no AI transcription
+        Alert.alert(
+          '🎙️ Recording Saved',
+          'Upgrade to Plus for AI transcription with clean grammar and emotional reflection!',
+          [
+            { text: 'Keep Recording', style: 'cancel' },
+            { text: 'Upgrade', onPress: () => checkFeatureAndShowPaywall('ai') },
+          ]
+        );
+        // For now, free users just see a note that the audio was recorded
+        // In production, you could save the raw audio or use device-only transcription
+      }
+    } catch (error) {
+      console.error('Stop recording error:', error);
+      Alert.alert('Error', 'Failed to stop recording.');
+    }
+  };
+
+  const handleVoiceToggle = () => {
+    if (isRecording) {
+      handleStopRecording();
+    } else {
+      handleStartRecording();
+    }
+  };
+
+  // File Attachment Functions
+  const handlePickFiles = async () => {
+    // 🚨 FEATURE GATE: File uploads require Plus subscription
+    const hasAccess = await checkFeatureAndShowPaywall('fileUpload');
+    if (!hasAccess) {
+      return; // Paywall will show automatically
+    }
+
+    try {
+      const results = await DocumentPicker.pick({
+        allowMultiSelection: true,
+        type: [DocumentPicker.types.images, DocumentPicker.types.pdf],
+      });
+
+      // Validate file sizes (10MB max per file)
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      const validFiles = results.filter(file => {
+        if (file.size && file.size > MAX_FILE_SIZE) {
+          Alert.alert(
+            'File Too Large',
+            `${file.name} is too large (max 10MB). It will be skipped.`,
+          );
+          return false;
+        }
+        return true;
+      });
+
+      setAttachments(prev => [...prev, ...validFiles]);
+    } catch (error: any) {
+      if (!DocumentPicker.isCancel(error)) {
+        console.error('File picker error:', error);
+        Alert.alert('Error', 'Failed to pick files.');
+      }
+    }
+  };
+
+  const handleRemoveAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const uploadAttachments = async (): Promise<Array<{url: string; name: string}>> => {
+    if (attachments.length === 0) return [];
+
+    const user = auth().currentUser;
+    if (!user) throw new Error('User not authenticated');
+
+    const uploadedAttachments: Array<{url: string; name: string}> = [];
+
+    for (const file of attachments) {
+      try {
+        const fileName = `${user.uid}/${Date.now()}_${file.name}`;
+        const reference = storage().ref(fileName);
+        
+        await reference.putFile(file.uri);
+        const url = await reference.getDownloadURL();
+        
+        uploadedAttachments.push({url, name: file.name});
+      } catch (uploadError) {
+        console.error('Upload error for', file.name, uploadError);
+        // Continue with other files even if one fails
+      }
+    }
+
+    return uploadedAttachments;
+  };
+
+  const handleSave = async () => {
+    if (!journalEntry.trim()) {
+      Alert.alert('Empty Entry', 'Please write something before saving.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      // Upload attachments first
+      let uploadedAttachments: Array<{url: string; name: string}> = [];
+      if (attachments.length > 0) {
+        setUploadingFiles(true);
+        try {
+          uploadedAttachments = await uploadAttachments();
+        } catch (uploadError) {
+          console.error('Upload error:', uploadError);
+          Alert.alert(
+            'Upload Warning',
+            'Some files failed to upload but entry will still be saved.',
+          );
+        } finally {
+          setUploadingFiles(false);
+        }
+      }
+
+      // Check for today's manifest data to auto-include
+      let manifestData = null;
+      let hasManifestData = false;
+      try {
+        const today = new Date().toISOString().split('T')[0];
+        const manifestSnapshot = await firestore()
+          .collection('manifest')
+          .where('userId', '==', user.uid)
+          .where('date', '==', today)
+          .limit(1)
+          .get();
+        
+        if (!manifestSnapshot.empty) {
+          const manifestDoc = manifestSnapshot.docs[0].data();
+          const wish = manifestDoc.want || '';
+          const outcome = manifestDoc.imagine || '';
+          const opposition = manifestDoc.snags || '';
+          const plan = manifestDoc.how || '';
+          
+          if (wish || outcome || opposition || plan) {
+            hasManifestData = true;
+            manifestData = {
+              wish,
+              outcome,
+              opposition,
+              plan,
+            };
+            console.log('✨ Auto-including manifest data from today:', manifestData);
+          }
+        }
+      } catch (manifestError) {
+        console.log('No manifest data found for today:', manifestError);
+      }
+
+      // Parse tags
+      const tagsArray = tags
+        .split(',')
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+      
+      // Add manifest tags if manifest data exists
+      if (hasManifestData) {
+        tagsArray.push('manifest', 'manifesting');
+        const today = new Date().toISOString().split('T')[0];
+        tagsArray.push(`manifestDate:${today}`);
+      }
+
+      // Save to Firestore
+      const entryData: any = {
+        text: journalEntry,
+        userId: user.uid,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+      };
+
+      // Add tags if present
+      if (tagsArray.length > 0) {
+        entryData.tags = tagsArray;
+      }
+
+      // Add manifest data if found
+      if (hasManifestData && manifestData) {
+        entryData.manifestData = manifestData;
+        entryData.contextManifest = `${manifestData.wish} | ${manifestData.outcome} | ${manifestData.opposition} | ${manifestData.plan}`;
+      }
+
+      // Add optional fields
+      if (savePromptChecked && generatedPrompt) {
+        entryData.promptUsed = generatedPrompt;
+      }
+      if (saveReflectionChecked && sophyReflection) {
+        entryData.reflectionUsed = sophyReflection;
+      }
+      if (sendToPractitioner && selectedPractitionerId) {
+        entryData.coachReview = true;
+        entryData.practitionerId = selectedPractitionerId;
+        entryData.practitionerReviewed = false;
+      }
+      if (uploadedAttachments.length > 0) {
+        entryData.attachments = uploadedAttachments;
+      }
+
+      const savedEntry = await firestore().collection('entries').add(entryData);
+
+      // Generate embeddings in background (non-blocking)
+      (async () => {
+        try {
+          const idToken = await user.getIdToken();
+          const endpoint = __DEV__
+            ? 'http://localhost:5001/inkwell-alpha/us-central1/embedAndStoreEntry'
+            : 'https://us-central1-inkwell-alpha.cloudfunctions.net/embedAndStoreEntry';
+          
+          await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              text: journalEntry,
+              entryId: savedEntry.id,
+            }),
+          });
+          console.log('Entry embeddings generated');
+        } catch (embedError) {
+          console.warn('Embedding error (non-blocking):', embedError);
+        }
+      })();
+
+      // Notify practitioner if tagged
+      if (sendToPractitioner && selectedPractitionerId) {
+        try {
+          const practitioner = practitioners.find(p => p.id === selectedPractitionerId);
+          const idToken = await user.getIdToken();
+          
+          const endpoint = __DEV__
+            ? 'http://localhost:5001/inkwell-alpha/us-central1/notifyCoachOfTaggedEntry'
+            : 'https://us-central1-inkwell-alpha.cloudfunctions.net/notifyCoachOfTaggedEntry';
+          
+          await fetch(endpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${idToken}`,
+            },
+            body: JSON.stringify({
+              entryId: savedEntry.id,
+              practitionerEmail: practitioner?.email,
+              practitionerName: practitioner?.name,
+              userEmail: user.email,
+              entryPreview: journalEntry.substring(0, 100),
+            }),
+          });
+          
+          console.log('Practitioner notification sent');
+        } catch (notifyError) {
+          console.error('Failed to notify practitioner:', notifyError);
+          // Don't fail the save if notification fails
+        }
+      }
+
+      const successMessage = hasManifestData 
+        ? 'Journal entry saved with manifest data!' 
+        : 'Journal entry saved successfully!';
+      Alert.alert('Success', successMessage);
+
+      // Clear form after successful save
+      setJournalEntry('');
+      setGeneratedPrompt('');
+      setSophyReflection('');
+      setPromptTopic('');
+      setSavePromptChecked(false);
+      setSaveReflectionChecked(false);
+      setSendToPractitioner(false);
+      setSelectedPractitionerId(practitioners.length > 0 ? practitioners[0].id : '');
+      setAttachments([]);
+      setAttachments([]);
+    } catch (error: any) {
+      console.error('Error saving entry:', error);
+      Alert.alert('Error', 'Failed to save entry. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <ScrollView style={styles.container}>
+      <View style={styles.content}>
+        {/* Prompt Section */}
+        <Text style={styles.subtextMuted}>
+          If you want a topic or some inspiration, <Text style={styles.sophyName}>Sophy</Text> can suggest ideas — you can even give her a topic to focus on.
+        </Text>
+
+        <TextInput
+          style={styles.promptInput}
+          placeholder="e.g., burnout last week, goals, feeling stuck"
+          placeholderTextColor={colors.fontMuted}
+          value={promptTopic}
+          onChangeText={setPromptTopic}
+        />
+
+        <TouchableOpacity
+          style={[styles.sophyButton, generatingPrompt && styles.sophyButtonDisabled]}
+          onPress={handleGeneratePrompt}
+          disabled={generatingPrompt}>
+          <Text style={styles.sophyButtonText}>
+            {generatingPrompt ? 'Generating...' : 'Ask Sophy for a Prompt'}
+          </Text>
+        </TouchableOpacity>
+
+        {generatedPrompt ? (
+          <View style={styles.promptDisplay}>
+            <Text style={styles.promptText}>{generatedPrompt}</Text>
+          </View>
+        ) : null}
+
+        <TouchableOpacity
+          style={styles.checkboxContainer}
+          onPress={() => {
+            const newChecked = !savePromptChecked;
+            setSavePromptChecked(newChecked);
+            if (newChecked && generatedPrompt) {
+              // Auto-insert prompt into journal entry
+              setJournalEntry(prev => {
+                const prefix = prev.trim() ? prev + '\n\n' : '';
+                return prefix + `Prompt: ${generatedPrompt}`;
+              });
+            }
+          }}>
+          <View style={[styles.checkbox, savePromptChecked && styles.checkboxChecked]}>
+            {savePromptChecked && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={styles.checkboxLabel}>
+            Save this Prompt in my Journal Entry
+          </Text>
+        </TouchableOpacity>
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* InkOutLoud Voice Recording Section */}
+        <TouchableOpacity
+          style={[
+            styles.voiceButton,
+            isRecording && styles.voiceButtonRecording,
+          ]}
+          onPress={handleVoiceToggle}>
+          <Text style={styles.voiceButtonText}>
+            {isRecording ? 'Stop Recording' : 'InkOutLoud'}
+          </Text>
+        </TouchableOpacity>
+
+        {!isRecording && (
+          <>
+            <Text style={styles.voiceHint}>Tap to voice transcribe</Text>
+            {!isPremium && (
+              <Text style={styles.voiceHintPlus}>✨ Plus offers full transcription with clean grammar & emotional reflection</Text>
+            )}
+          </>
+        )}
+
+        {isRecording && (
+          <Text style={styles.voiceStatus}>
+            Recording: {recordingDuration}
+          </Text>
+        )}
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Journal Entry Section */}
+        <Text style={styles.journalHeading}>Journal Entry</Text>
+        
+        <Text style={styles.subtitle}>
+          What's on your mind today? Write freely and honestly.
+        </Text>
+
+        <TextInput
+          style={styles.textArea}
+          placeholder="Start writing your thoughts here..."
+          placeholderTextColor="#93A5A8"
+          value={journalEntry}
+          onChangeText={setJournalEntry}
+          multiline
+          textAlignVertical="top"
+          editable={!saving}
+        />
+
+        {/* Character Count */}
+        <Text style={styles.characterCount}>
+          {journalEntry.length} characters
+        </Text>
+
+        {/* Sophy Reflection Section */}
+        <TouchableOpacity
+          style={[
+            styles.sophyButton,
+            generatingReflection && styles.sophyButtonDisabled,
+          ]}
+          onPress={handleGetReflection}
+          disabled={generatingReflection || !journalEntry.trim()}>
+          <Text style={styles.sophyButtonText}>
+            {generatingReflection
+              ? 'Reflecting...'
+              : 'Ask Sophy for Reflection'}
+          </Text>
+        </TouchableOpacity>
+
+        {sophyReflection ? (
+          <View style={styles.reflectionDisplay}>
+            <Text style={styles.reflectionText}>{sophyReflection}</Text>
+          </View>
+        ) : null}
+
+        {sophyReflection ? (
+          <TouchableOpacity
+            style={styles.checkboxContainer}
+            onPress={() => {
+              const newChecked = !saveReflectionChecked;
+              setSaveReflectionChecked(newChecked);
+              if (newChecked && sophyReflection) {
+                // Auto-insert reflection into journal entry
+                setJournalEntry(prev => {
+                  const prefix = prev.trim() ? prev + '\n\n' : '';
+                  return prefix + `Sophy's Reflection: ${sophyReflection}`;
+                });
+              }
+            }}>
+            <View
+              style={[
+                styles.checkbox,
+                saveReflectionChecked && styles.checkboxChecked,
+              ]}>
+              {saveReflectionChecked && <Text style={styles.checkmark}>✓</Text>}
+            </View>
+            <Text style={styles.checkboxLabel}>
+              Save this Reflection in my Journal Entry
+            </Text>
+          </TouchableOpacity>
+        ) : null}
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* File Attachments Section */}
+        <View style={styles.sectionLabelRow}>
+          <Text style={styles.sectionLabel}>Attach Photos or Files</Text>
+          {!isPremium && (
+            <View style={styles.plusBadge}>
+              <Text style={styles.plusBadgeText}>Plus</Text>
+            </View>
+          )}
+        </View>
+        {isPremium && (
+          <Text style={styles.subtitle}>
+            Enrich your entry with images or documents (max 10MB per file)
+          </Text>
+        )}
+
+        <TouchableOpacity
+          style={[styles.attachButton, !isPremium && styles.attachButtonLocked]}
+          onPress={handlePickFiles}
+          disabled={uploadingFiles}>
+          <Text style={styles.attachButtonText}>
+            {uploadingFiles ? 'Uploading...' : isPremium ? '📎 Select Files' : '🔒 Upgrade to Attach Files'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Attachment Previews */}
+        {attachments.length > 0 && (
+          <View style={styles.attachmentPreview}>
+            {attachments.map((file, index) => (
+              <View key={index} style={styles.attachmentItem}>
+                {file.type?.startsWith('image/') ? (
+                  <Image
+                    source={{uri: file.uri}}
+                    style={styles.attachmentImage}
+                    resizeMode="cover"
+                  />
+                ) : (
+                  <View style={styles.attachmentFileIcon}>
+                    <Text style={styles.fileIconText}>📄</Text>
+                  </View>
+                )}
+                <View style={styles.attachmentInfo}>
+                  <Text style={styles.attachmentName} numberOfLines={1}>
+                    {file.name}
+                  </Text>
+                  <Text style={styles.attachmentSize}>
+                    {(file.size / 1024).toFixed(1)} KB
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleRemoveAttachment(index)}
+                  style={styles.removeButton}>
+                  <Text style={styles.removeButtonText}>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
+        {/* Send to Practitioner */}
+        <View style={styles.sectionLabelRow}>
+          <Text style={styles.checkboxLabel}>📬 Send to Practitioner</Text>
+          {!isConnect && (
+            <View style={[styles.plusBadge, styles.connectBadge]}>
+              <Text style={styles.plusBadgeText}>Connect</Text>
+            </View>
+          )}
+        </View>
+        <TouchableOpacity
+          style={[styles.checkboxContainer, !isConnect && styles.checkboxContainerLocked]}
+          onPress={async () => {
+            // 🚨 FEATURE GATE: Practitioner connection requires Connect subscription
+            const hasAccess = await checkFeatureAndShowPaywall('practitioner');
+            if (!hasAccess) return;
+            setSendToPractitioner(!sendToPractitioner);
+          }}>
+          <View
+            style={[
+              styles.checkbox,
+              sendToPractitioner && styles.checkboxChecked,
+            ]}>
+            {sendToPractitioner && <Text style={styles.checkmark}>✓</Text>}
+          </View>
+          <Text style={styles.checkboxLabel}>
+            {isConnect ? 'Send this entry to my practitioner' : '🔒 Upgrade to Connect to share with practitioners'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* Practitioner Dropdown - Only show if checkbox is checked */}
+        {sendToPractitioner && (
+          <View style={styles.practitionerSection}>
+            {loadingPractitioners ? (
+              <ActivityIndicator size="small" color={colors.brandPrimary} />
+            ) : practitioners.length === 0 ? (
+              <View style={styles.noPractitionersContainer}>
+                <Text style={styles.noPractitionersText}>
+                  ⚠️ No practitioners found. Add a practitioner in Settings to share entries.
+                </Text>
+                <TouchableOpacity
+                  style={styles.goToSettingsButton}
+                  onPress={() => navigation.navigate('Settings')}>
+                  <Text style={styles.goToSettingsButtonText}>
+                    Go to Settings
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <Text style={styles.pickerLabel}>Select Practitioner:</Text>
+                <View style={styles.pickerContainer}>
+                  <Picker
+                    selectedValue={selectedPractitionerId}
+                    onValueChange={(value) => setSelectedPractitionerId(value)}
+                    style={styles.picker}>
+                    {practitioners.map((pract) => (
+                      <Picker.Item
+                        key={pract.id}
+                        label={`${pract.name} (${pract.email})`}
+                        value={pract.id}
+                      />
+                    ))}
+                  </Picker>
+                </View>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Save Button */}
+        <TouchableOpacity
+          style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+          onPress={handleSave}
+          disabled={saving}>
+          <Text style={styles.saveButtonText}>
+            {saving ? 'Saving...' : 'Save Journal Entry'}
+          </Text>
+        </TouchableOpacity>
+
+        <Text style={styles.helpText}>
+          Your journal entries are private and only visible to you and any
+          practitioners you choose to share with.
+        </Text>
+      </View>
+
+      {/* Paywall Modal */}
+      <PaywallModal
+        visible={showPaywall}
+        onClose={closePaywall}
+        featureContext="Attach files and photos to your journal entries"
+      />
+    </ScrollView>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#F5F5F3', // Warm gray base
+  },
+  content: {
+    padding: spacing.lg,
+  },
+  title: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.xxl,
+    color: colors.fontMain,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+  },
+  
+  // Prompt Section Styles
+  subtextMuted: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.base,
+    color: colors.fontSecondary,
+    marginTop: spacing.base,
+    marginBottom: spacing.base,
+    lineHeight: 24,
+  },
+  sophyName: {
+    fontFamily: fontFamily.bodyBold,
+    color: colors.sophyAccent,
+  },
+  promptInput: {
+    fontFamily: fontFamily.body,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.lg,
+    padding: spacing.base,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    marginBottom: spacing.base,
+  },
+  sophyButton: {
+    backgroundColor: colors.sophyAccent,
+    paddingVertical: spacing.base,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    marginBottom: spacing.base,
+  },
+  sophyButtonDisabled: {
+    opacity: 0.7,
+  },
+  sophyButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.md,
+    letterSpacing: 0.5,
+  },
+  promptDisplay: {
+    backgroundColor: colors.sophyAccent,
+    borderRadius: borderRadius.lg,
+    padding: spacing.base,
+    marginBottom: spacing.base,
+  },
+  promptText: {
+    fontFamily: fontFamily.body,
+    color: '#FDF7F1',
+    fontSize: fontSize.base,
+    lineHeight: 24,
+  },
+  reflectionDisplay: {
+    backgroundColor: '#F5F9FA',
+    borderRadius: borderRadius.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.sophyAccent,
+    padding: spacing.base,
+    marginTop: spacing.base,
+    marginBottom: spacing.base,
+  },
+  reflectionText: {
+    fontFamily: fontFamily.body,
+    color: colors.fontMain,
+    fontSize: fontSize.base,
+    lineHeight: 24,
+    fontStyle: 'italic',
+  },
+  checkboxContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: spacing.sm,
+    marginBottom: spacing.base,
+  },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: borderRadius.sm,
+    borderWidth: 2,
+    borderColor: colors.borderMedium,
+    marginRight: spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  checkboxChecked: {
+    backgroundColor: colors.sophyAccent,
+    borderColor: colors.sophyAccent,
+  },
+  checkmark: {
+    color: colors.fontWhite,
+    fontSize: fontSize.sm,
+  },
+  checkboxLabel: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+  },
+  divider: {
+    height: 1,
+    backgroundColor: colors.borderMedium,
+    marginVertical: spacing.xl,
+  },
+
+  // InkOutLoud Voice Recording Styles
+  voiceButton: {
+    backgroundColor: colors.brandPrimary,
+    paddingVertical: spacing.base,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  voiceButtonRecording: {
+    backgroundColor: colors.btnDanger,
+  },
+  voiceButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.md,
+    letterSpacing: 0.5,
+  },
+  voiceHint: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.fontSecondary,
+    textAlign: 'center',
+    marginTop: -spacing.xs,
+  },
+  voiceHintPlus: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.tierPlus,
+    textAlign: 'center',
+    marginBottom: spacing.base,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
+  },
+  voiceStatus: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.sm,
+    color: colors.brandPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.base,
+  },
+  
+  // Journal Entry Section Styles
+  journalHeading: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.xxxl,
+    color: colors.fontMain,
+    textAlign: 'center',
+    marginBottom: spacing.xl,
+  },
+  subtitle: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.md,
+    color: colors.fontSecondary,
+    marginBottom: spacing.xl,
+  },
+  textArea: {
+    fontFamily: fontFamily.body,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.lg,
+    padding: spacing.base,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    minHeight: 300,
+    marginBottom: spacing.lg,
+  },
+  saveButton: {
+    backgroundColor: colors.brandPrimary,
+    paddingVertical: spacing.base,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    marginBottom: spacing.base,
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
+  },
+  saveButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.md,
+    letterSpacing: 0.5,
+  },
+  helpText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMuted,
+    lineHeight: 22,
+    textAlign: 'center',
+  },
+  
+  // File Attachment Styles
+  sectionLabel: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    marginBottom: spacing.sm,
+  },
+  sectionLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  plusBadge: {
+    backgroundColor: colors.tierPlus,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: borderRadius.sm,
+    marginLeft: spacing.sm,
+  },
+  plusBadgeText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.xs,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+  },
+  connectBadge: {
+    backgroundColor: colors.tierConnect,
+  },
+  attachButton: {
+    backgroundColor: colors.bgCard,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    borderStyle: 'dashed',
+    paddingVertical: spacing.base,
+    borderRadius: borderRadius.lg,
+    alignItems: 'center',
+    marginBottom: spacing.base,
+  },
+  attachButtonLocked: {
+    borderColor: colors.borderLight,
+    backgroundColor: colors.bgBase,
+  },
+  attachButtonText: {
+    fontFamily: fontFamily.button,
+    color: colors.brandPrimary,
+    fontSize: fontSize.md,
+  },
+  checkboxContainerLocked: {
+    opacity: 0.7,
+  },
+  attachmentPreview: {
+    marginBottom: spacing.base,
+  },
+  attachmentItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  attachmentImage: {
+    width: 50,
+    height: 50,
+    borderRadius: borderRadius.sm,
+    marginRight: spacing.sm,
+  },
+  attachmentFileIcon: {
+    width: 50,
+    height: 50,
+    borderRadius: borderRadius.sm,
+    backgroundColor: '#F5F5F3',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.sm,
+  },
+  fileIconText: {
+    fontSize: fontSize.xxl,
+  },
+  attachmentInfo: {
+    flex: 1,
+  },
+  attachmentName: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+    marginBottom: 2,
+  },
+  attachmentSize: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.xs,
+    color: colors.fontMuted,
+  },
+  removeButton: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#fee',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  removeButtonText: {
+    color: '#d00',
+    fontSize: fontSize.lg,
+  },
+  
+  // Practitioner Selection Styles
+  practitionerSection: {
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.md,
+    padding: spacing.base,
+    marginTop: spacing.sm,
+    marginBottom: spacing.base,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  noPractitionersContainer: {
+    alignItems: 'center',
+    padding: spacing.sm,
+  },
+  noPractitionersText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+    lineHeight: 22,
+  },
+  goToSettingsButton: {
+    backgroundColor: colors.brandPrimary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.base,
+    borderRadius: borderRadius.md,
+  },
+  goToSettingsButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.sm,
+    letterSpacing: 0.5,
+  },
+  pickerLabel: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+    marginBottom: spacing.xs,
+  },
+  pickerContainer: {
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    borderRadius: borderRadius.md,
+    backgroundColor: colors.bgCard,
+    overflow: 'hidden',
+  },
+  picker: {
+    height: 50,
+  },
+  tagsInput: {
+    fontFamily: fontFamily.body,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.md,
+    padding: spacing.base,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    marginBottom: spacing.xs,
+  },
+  tagsHint: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.brandPrimary,
+    marginBottom: spacing.base,
+    fontStyle: 'italic',
+  },
+});
+
+export default JournalScreen;

@@ -1,0 +1,46 @@
+{
+  "project_info": {
+    "project_number": "849610731668",
+    "project_id": "inkwell-alpha",
+    "storage_bucket": "inkwell-alpha.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:849610731668:android:YOUR_ANDROID_APP_ID",
+        "android_client_info": {
+          "package_name": "com.inkwellmobile"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "824582728030-ods5dqf5n1emcg8qd39qk8k0j3ccu9k0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDcNvq-Jc-SFSIOuJG59ue6HgwtaLDevNg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "824582728030-ods5dqf5n1emcg8qd39qk8k0j3ccu9k0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "849610731668-b3qfvenc3ff0b9e26ea0q326mgq4r98m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.pegasusrealm.inkwellmobile"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

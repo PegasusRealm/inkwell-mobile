@@ -1,0 +1,25 @@
+{
+  "migIndex": 1,
+  "data": [
+    {
+      "path": "assets/fonts/Alice-Regular.ttf",
+      "sha1": "f457bccf58dd115576d7d855d17afd9187791fb1"
+    },
+    {
+      "path": "assets/fonts/Lato-Bold.ttf",
+      "sha1": "a3a53a436baaf6dc2e7a05f05866a761c214692b"
+    },
+    {
+      "path": "assets/fonts/PlayfairDisplay-Bold.ttf",
+      "sha1": "83a180802529fd1f7702f4e6308b87fdbd7b5a96"
+    },
+    {
+      "path": "assets/fonts/Lato-Regular.ttf",
+      "sha1": "29eb192629b0bbb41a7b7f49ab2aec82d4261921"
+    },
+    {
+      "path": "assets/fonts/PlayfairDisplay-Regular.ttf",
+      "sha1": "a0e3babd3c318e1b14fd3e43b9570153a5b194fe"
+    }
+  ]
+}
