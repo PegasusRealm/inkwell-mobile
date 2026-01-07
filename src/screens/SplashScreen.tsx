@@ -1,4 +1,4 @@
-import React, {useEffect, useRef} from 'react';
+import React, {useEffect, useRef, useMemo} from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,8 @@ import {
   Animated,
   Dimensions,
 } from 'react-native';
-import {colors, spacing, fontFamily, fontSize} from '../theme';
+import {spacing, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 
 const {width, height} = Dimensions.get('window');
 
@@ -16,6 +17,12 @@ interface SplashScreenProps {
 }
 
 const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
+  // Theme hook for dynamic theming
+  const {colors, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
   const logoOpacity = useRef(new Animated.Value(0)).current;
@@ -225,10 +232,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
   );
 };
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F0FDFA',
+    backgroundColor: colors.bgPrimary,
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -1,8 +1,15 @@
-import React from 'react';
+import React, {useMemo} from 'react';
 import {View, Text, StyleSheet, ScrollView} from 'react-native';
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 
 export default function InfoScreen() {
+  // Theme hook for dynamic theming
+  const {colors} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  
   return (
     <ScrollView style={styles.container}>
       {/* Welcome Section */}
@@ -132,7 +139,8 @@ export default function InfoScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgCard,

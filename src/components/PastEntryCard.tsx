@@ -1,4 +1,4 @@
-import React, {useState} from 'react';
+import React, {useState, useMemo} from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,8 @@ import {
   Image,
   Linking,
 } from 'react-native';
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 
 interface PastEntryCardProps {
   entry: {
@@ -40,6 +41,12 @@ const PastEntryCard: React.FC<PastEntryCardProps> = ({
   onDelete,
   onMarkAsRead,
 }) => {
+  // Theme hook for dynamic theming
+  const {colors, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  
   const [manifestExpanded, setManifestExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [reflectionExpanded, setReflectionExpanded] = useState(false);
@@ -271,9 +278,10 @@ const PastEntryCard: React.FC<PastEntryCardProps> = ({
   );
 };
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   card: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colors.bgCard,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     marginBottom: spacing.lg,
@@ -308,7 +316,7 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   newReplyBadgeText: {
-    color: '#FFFFFF',
+    color: colors.fontWhite,
     fontSize: fontSize.xs,
     fontFamily: fontFamily.buttonBold,
     letterSpacing: 0.5,
@@ -333,7 +341,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.buttonBold,
   },
   toggleContent: {
-    backgroundColor: '#F5F0E8',
+    backgroundColor: colors.bgSection,
     padding: spacing.sm,
     borderRadius: borderRadius.sm,
     borderLeftWidth: 4,
@@ -360,7 +368,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.md,
   },
   reflectionNote: {
-    backgroundColor: '#F5F0E8',
+    backgroundColor: colors.bgSection,
     padding: spacing.sm,
     borderRadius: borderRadius.sm,
     borderLeftWidth: 4,
@@ -374,7 +382,7 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
   coachResponse: {
-    backgroundColor: '#F5F0E8',
+    backgroundColor: colors.bgSection,
     padding: spacing.md,
     borderRadius: borderRadius.md,
     borderLeftWidth: 4,
@@ -406,7 +414,7 @@ const styles = StyleSheet.create({
     alignSelf: 'flex-start',
   },
   markReadButtonText: {
-    color: '#FFFFFF',
+    color: colors.fontWhite,
     fontSize: fontSize.sm,
     fontFamily: fontFamily.buttonBold,
   },
@@ -430,13 +438,13 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: borderRadius.sm,
-    backgroundColor: '#E0E0E0',
+    backgroundColor: colors.bgMuted,
   },
   filePlaceholder: {
     width: 60,
     height: 60,
     borderRadius: borderRadius.sm,
-    backgroundColor: '#F5F0E8',
+    backgroundColor: colors.bgSection,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -457,7 +465,7 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: borderRadius.sm,
-    backgroundColor: 'rgba(42, 105, 114, 0.1)',
+    backgroundColor: colors.brandPrimaryRgba,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -484,10 +492,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.brandPrimary,
   },
   deleteButton: {
-    backgroundColor: '#6c757d',
+    backgroundColor: colors.fontMuted,
   },
   actionButtonText: {
-    color: '#FFFFFF',
+    color: colors.fontWhite,
     fontSize: fontSize.sm,
     fontFamily: fontFamily.buttonBold,
   },
@@ -498,12 +506,12 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   tag: {
-    backgroundColor: 'rgba(42, 105, 114, 0.1)',
+    backgroundColor: colors.brandPrimaryRgba,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: borderRadius.sm,
     borderWidth: 1,
-    borderColor: 'rgba(42, 105, 114, 0.2)',
+    borderColor: colors.brandPrimary + '33',
   },
   tagText: {
     fontSize: fontSize.xs,

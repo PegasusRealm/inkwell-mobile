@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,17 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import {refineManifest} from '../services/sophyApi';
 import type {TabScreenProps} from '../navigation/types';
 
 const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
+  // Theme hook for dynamic theming
+  const {colors, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
   // Add Settings button to header
   useEffect(() => {
     navigation.setOptions({
@@ -632,7 +638,8 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
   );
 };
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -721,7 +728,7 @@ const styles = StyleSheet.create({
   },
   progressBarContainer: {
     height: 25,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.bgMuted,
     borderRadius: 15,
     overflow: 'hidden',
     marginBottom: spacing.sm,
@@ -860,7 +867,7 @@ const styles = StyleSheet.create({
 
   // Suggestion Display
   suggestionDisplay: {
-    backgroundColor: '#F5F9FA',
+    backgroundColor: colors.bgSection,
     borderLeftWidth: 3,
     borderLeftColor: colors.sophyAccent,
     padding: spacing.md,
@@ -884,7 +891,7 @@ const styles = StyleSheet.create({
 
   // Coach Guidance
   coachGuidance: {
-    backgroundColor: '#EAF6FB',
+    backgroundColor: colors.infoBg,
     borderLeftWidth: 4,
     borderLeftColor: colors.brandPrimary,
     padding: spacing.lg,

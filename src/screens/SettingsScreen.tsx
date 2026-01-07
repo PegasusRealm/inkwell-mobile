@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {
   View,
   Text,
@@ -17,7 +17,8 @@ import ReactNativeBlobUtil from 'react-native-blob-util';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import {colors, spacing, borderRadius, fontFamily, fontSize, useTheme} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import type {ThemeMode} from '../theme';
 import type {RootStackScreenProps} from '../navigation/types';
 import {useSubscription} from '../hooks/useSubscription';
@@ -28,6 +29,9 @@ export default function SettingsScreen({
 }: RootStackScreenProps<'Settings'>) {
   const user = auth().currentUser;
   const {colors, themeMode, setThemeMode, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
   
   const [practitioners, setPractitioners] = useState<Array<{id: string; name: string; email: string}>>([]);
   const [loadingPractitioners, setLoadingPractitioners] = useState(true);
@@ -1323,7 +1327,8 @@ export default function SettingsScreen({
   );
 }
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -1898,11 +1903,11 @@ const styles = StyleSheet.create({
     minHeight: 44,
   },
   exportButtonDisabled: {
-    backgroundColor: '#718096',
+    backgroundColor: colors.fontMuted,
   },
   exportButtonText: {
     fontFamily: fontFamily.buttonBold,
-    color: '#ffffff',
+    color: colors.fontWhite,
     fontSize: fontSize.md,
     letterSpacing: 0.5,
   },
@@ -1910,7 +1915,7 @@ const styles = StyleSheet.create({
   themeLabel: {
     fontFamily: fontFamily.bodyBold,
     fontSize: fontSize.md,
-    color: '#2D3748',
+    color: colors.fontMain,
     marginBottom: spacing.md,
   },
   themeOptions: {
@@ -1925,12 +1930,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.md,
     borderWidth: 2,
-    borderColor: '#E2E8F0',
-    backgroundColor: '#F7F6F5',
+    borderColor: colors.borderLight,
+    backgroundColor: colors.bgMuted,
   },
   themeOptionSelected: {
-    borderColor: '#2A6972',
-    backgroundColor: 'rgba(42, 105, 114, 0.1)',
+    borderColor: colors.brandPrimary,
+    backgroundColor: colors.brandPrimaryRgba,
   },
   themeOptionIcon: {
     fontSize: 24,
@@ -1939,16 +1944,16 @@ const styles = StyleSheet.create({
   themeOptionText: {
     fontFamily: fontFamily.button,
     fontSize: fontSize.sm,
-    color: '#4A5568',
+    color: colors.fontSecondary,
   },
   themeOptionTextSelected: {
     fontFamily: fontFamily.buttonBold,
-    color: '#2A6972',
+    color: colors.brandPrimary,
   },
   themeHint: {
     fontFamily: fontFamily.body,
     fontSize: fontSize.xs,
-    color: '#718096',
+    color: colors.fontMuted,
     marginTop: spacing.sm,
     textAlign: 'center',
     fontStyle: 'italic',

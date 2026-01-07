@@ -5,7 +5,7 @@
  * Updated 2026-01-06: Tiered design with separate Plus/Connect sections
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -21,7 +21,8 @@ import {
 import { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 import SubscriptionService, { AllOfferings } from '../services/SubscriptionService';
 import auth from '@react-native-firebase/auth';
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -40,6 +41,12 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   onPurchaseSuccess,
   featureBlocked,
 }) => {
+  // Theme hook for dynamic theming
+  const {colors, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  
   const [offerings, setOfferings] = useState<AllOfferings | null>(null);
   const [loading, setLoading] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
@@ -160,6 +167,14 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
       setPurchasing(false);
     }
   };
+
+  // Local FeatureChip component that has access to styles
+  const FeatureChip: React.FC<{ icon: string; text: string }> = ({ icon, text }) => (
+    <View style={styles.featureChip}>
+      <Text style={styles.featureChipIcon}>{icon}</Text>
+      <Text style={styles.featureChipText}>{text}</Text>
+    </View>
+  );
 
   // Error state
   if (error && !loading) {
@@ -364,22 +379,15 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   );
 };
 
-// Feature Chip Component
-const FeatureChip: React.FC<{ icon: string; text: string }> = ({ icon, text }) => (
-  <View style={styles.featureChip}>
-    <Text style={styles.featureChipIcon}>{icon}</Text>
-    <Text style={styles.featureChipText}>{text}</Text>
-  </View>
-);
-
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.bgCard,
   },
   container: {
     flex: 1,
-    backgroundColor: '#fff',
+    backgroundColor: colors.bgCard,
   },
   closeButton: {
     position: 'absolute',
@@ -388,7 +396,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: '#f0f0f0',
+    backgroundColor: colors.bgMuted,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 10,
@@ -429,7 +437,7 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   retryButtonText: {
-    color: '#fff',
+    color: colors.fontWhite,
     fontSize: fontSize.md,
     fontFamily: fontFamily.buttonBold,
   },
@@ -467,18 +475,18 @@ const styles = StyleSheet.create({
   // Tier Cards
   tierCard: {
     borderWidth: 2,
-    borderColor: '#e0e0e0',
+    borderColor: colors.borderMedium,
     borderRadius: borderRadius.lg,
     padding: spacing.md,
     marginBottom: spacing.md,
-    backgroundColor: '#fff',
+    backgroundColor: colors.bgCard,
   },
   tierCardSelected: {
     borderColor: colors.brandPrimary,
-    backgroundColor: '#f8fcfc',
+    backgroundColor: colors.infoBg,
   },
   connectCard: {
-    borderColor: '#e0e0e0',
+    borderColor: colors.borderMedium,
   },
   tierHeader: {
     flexDirection: 'row',
@@ -518,7 +526,7 @@ const styles = StyleSheet.create({
   featureChip: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f5f5f5',
+    backgroundColor: colors.bgMuted,
     paddingHorizontal: spacing.sm,
     paddingVertical: 6,
     borderRadius: borderRadius.lg,
@@ -544,12 +552,12 @@ const styles = StyleSheet.create({
     padding: spacing.sm,
     borderRadius: borderRadius.md,
     borderWidth: 1.5,
-    borderColor: '#e0e0e0',
-    backgroundColor: '#fff',
+    borderColor: colors.borderMedium,
+    backgroundColor: colors.bgCard,
   },
   priceOptionSelected: {
     borderColor: colors.brandPrimary,
-    backgroundColor: '#f0f8f9',
+    backgroundColor: colors.infoBg,
   },
   priceOptionLeft: {
     flexDirection: 'row',
@@ -564,7 +572,7 @@ const styles = StyleSheet.create({
     height: 22,
     borderRadius: 11,
     borderWidth: 2,
-    borderColor: '#ccc',
+    borderColor: colors.borderMedium,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -585,7 +593,7 @@ const styles = StyleSheet.create({
   savingsText: {
     fontSize: fontSize.xs,
     fontFamily: fontFamily.buttonBold,
-    color: '#28a745',
+    color: colors.accentGrowth,
     marginTop: 2,
   },
   priceAmount: {
@@ -601,7 +609,7 @@ const styles = StyleSheet.create({
   
   // Trial Badge
   trialBadge: {
-    backgroundColor: '#e8f5e9',
+    backgroundColor: colors.accentGrowth + '20',
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.md,
     borderRadius: 20,
@@ -609,7 +617,7 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
   },
   trialBadgeText: {
-    color: '#2e7d32',
+    color: colors.accentGrowth,
     fontFamily: fontFamily.buttonBold,
     fontSize: fontSize.sm,
   },
@@ -623,7 +631,7 @@ const styles = StyleSheet.create({
     borderRadius: borderRadius.md,
     borderWidth: 1.5,
     borderColor: colors.tierConnect,
-    backgroundColor: '#faf5ff',
+    backgroundColor: colors.tierConnect + '10',
   },
   extraMessageNote: {
     fontSize: fontSize.xs,
@@ -647,7 +655,7 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   ctaButtonText: {
-    color: 'white',
+    color: colors.fontWhite,
     fontSize: fontSize.lg,
     fontFamily: fontFamily.buttonBold,
   },

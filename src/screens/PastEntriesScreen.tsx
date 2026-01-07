@@ -1,4 +1,4 @@
-import React, {useState, useEffect} from 'react';
+import React, {useState, useEffect, useMemo} from 'react';
 import {
   View,
   Text,
@@ -11,11 +11,17 @@ import {
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import auth from '@react-native-firebase/auth';
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import PastEntryCard from '../components/PastEntryCard';
 import type {TabScreenProps} from '../navigation/types';
 
 const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}) => {
+  // Theme hook for dynamic theming
+  const {colors, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
   // Add Settings button to header
   useEffect(() => {
     navigation.setOptions({
@@ -550,7 +556,8 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   );
 };
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -598,7 +605,7 @@ const styles = StyleSheet.create({
   },
   calendar: {
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderMedium,
     borderRadius: borderRadius.md,
     overflow: 'hidden',
   },
@@ -624,7 +631,7 @@ const styles = StyleSheet.create({
     aspectRatio: 1,
     borderRightWidth: 1,
     borderBottomWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderLight,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.bgCard,
@@ -633,10 +640,10 @@ const styles = StyleSheet.create({
     backgroundColor: colors.bgMuted,
   },
   hasEntryCell: {
-    backgroundColor: 'rgba(42,105,114,0.2)',
+    backgroundColor: colors.brandPrimaryRgba,
   },
   hasReplyCell: {
-    backgroundColor: colors.accent,
+    backgroundColor: colors.accentGrowth,
   },
   todayCell: {
     backgroundColor: colors.tierPlus,
@@ -660,7 +667,7 @@ const styles = StyleSheet.create({
   },
   divider: {
     height: 2,
-    backgroundColor: colors.border,
+    backgroundColor: colors.borderMedium,
     marginVertical: spacing.xl,
   },
   searchSection: {
@@ -677,7 +684,7 @@ const styles = StyleSheet.create({
     fontFamily: fontFamily.body,
     backgroundColor: colors.bgCard,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderMedium,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     fontSize: fontSize.md,
@@ -692,7 +699,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   searchButtonDisabled: {
-    backgroundColor: colors.border,
+    backgroundColor: colors.borderMedium,
     opacity: 0.6,
   },
   searchButtonText: {
@@ -765,7 +772,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.bgCard,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: colors.borderMedium,
     borderRadius: borderRadius.md,
     padding: spacing.md,
     fontSize: fontSize.md,

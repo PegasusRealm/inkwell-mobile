@@ -2,6 +2,7 @@ import React from 'react';
 import {createStackNavigator} from '@react-navigation/stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {Text} from 'react-native';
+import {useTheme} from '../theme/ThemeContext';
 
 // Import screens
 import JournalScreen from '../screens/JournalScreen';
@@ -23,21 +24,25 @@ const TabIcon = ({label, focused}: {label: string; focused: boolean}) => (
 
 // Main bottom tab navigator
 function MainTabs() {
+  const {colors} = useTheme();
+  
   return (
     <Tab.Navigator
       screenOptions={{
         headerStyle: {
-          backgroundColor: '#2A6972',
+          backgroundColor: colors.brandPrimary,
         },
-        headerTintColor: '#fff',
+        headerTintColor: colors.fontWhite,
         headerTitleStyle: {
           fontWeight: '600',
         },
-        tabBarActiveTintColor: '#2A6972',
-        tabBarInactiveTintColor: '#999',
+        tabBarActiveTintColor: colors.brandPrimary,
+        tabBarInactiveTintColor: colors.fontMuted,
         tabBarStyle: {
           height: 60,
           paddingBottom: 8,
+          backgroundColor: colors.bgCard,
+          borderTopColor: colors.borderLight,
         },
       }}>
       <Tab.Screen
@@ -70,6 +75,8 @@ function MainTabs() {
 
 // Root stack navigator (includes tabs and modal screens)
 export default function RootNavigator() {
+  const {colors} = useTheme();
+  
   return (
     <Stack.Navigator
       screenOptions={{
@@ -84,9 +91,9 @@ export default function RootNavigator() {
           presentation: 'modal',
           title: 'Settings',
           headerStyle: {
-            backgroundColor: '#2A6972',
+            backgroundColor: colors.brandPrimary,
           },
-          headerTintColor: '#fff',
+          headerTintColor: colors.fontWhite,
         }}
       />
       <Stack.Screen
@@ -97,9 +104,9 @@ export default function RootNavigator() {
           presentation: 'modal',
           title: 'Help & Info',
           headerStyle: {
-            backgroundColor: '#2A6972',
+            backgroundColor: colors.brandPrimary,
           },
-          headerTintColor: '#fff',
+          headerTintColor: colors.fontWhite,
         }}
       />
     </Stack.Navigator>

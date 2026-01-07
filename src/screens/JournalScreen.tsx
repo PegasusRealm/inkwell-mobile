@@ -1,4 +1,4 @@
-import React, {useState, useRef, useEffect} from 'react';
+import React, {useState, useRef, useEffect, useMemo} from 'react';
 import {
   View,
   Text,
@@ -12,6 +12,7 @@ import {
   Image,
   Linking,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
@@ -19,7 +20,8 @@ import AudioRecorderPlayer from 'react-native-audio-recorder-player';
 import DocumentPicker from 'react-native-document-picker';
 import storage from '@react-native-firebase/storage';
 import firestore from '@react-native-firebase/firestore';
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import {generatePrompt, transcribeVoice, getReflection} from '../services/sophyApi';
 import {useSubscription} from '../hooks/useSubscription';
 import {
@@ -32,6 +34,12 @@ import PaywallModal from '../components/PaywallModal';
 import type {TabScreenProps} from '../navigation/types';
 
 const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
+  // Theme hook for dynamic theming
+  const {colors, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  
   // Subscription hook for feature gating
   const {
     checkFeatureAndShowPaywall,
@@ -977,10 +985,11 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   );
 };
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F5F5F3', // Warm gray base
+    backgroundColor: colors.bgPrimary,
   },
   content: {
     padding: spacing.lg,
@@ -1049,12 +1058,12 @@ const styles = StyleSheet.create({
   },
   promptText: {
     fontFamily: fontFamily.body,
-    color: '#FDF7F1',
+    color: colors.fontWhite,
     fontSize: fontSize.base,
     lineHeight: 24,
   },
   reflectionDisplay: {
-    backgroundColor: '#F5F9FA',
+    backgroundColor: colors.bgSection,
     borderRadius: borderRadius.lg,
     borderLeftWidth: 4,
     borderLeftColor: colors.sophyAccent,
@@ -1236,7 +1245,7 @@ const styles = StyleSheet.create({
   },
   attachButtonLocked: {
     borderColor: colors.borderLight,
-    backgroundColor: colors.bgBase,
+    backgroundColor: colors.bgMuted,
   },
   attachButtonText: {
     fontFamily: fontFamily.button,
@@ -1269,7 +1278,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: borderRadius.sm,
-    backgroundColor: '#F5F5F3',
+    backgroundColor: colors.bgMuted,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.sm,
@@ -1295,12 +1304,12 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    backgroundColor: '#fee',
+    backgroundColor: colors.btnDanger + '20',
     justifyContent: 'center',
     alignItems: 'center',
   },
   removeButtonText: {
-    color: '#d00',
+    color: colors.btnDanger,
     fontSize: fontSize.lg,
   },
   

@@ -3,7 +3,7 @@
  * Handles email/password, Apple, and Google authentication
  */
 
-import React, {useState} from 'react';
+import React, {useState, useMemo} from 'react';
 import {
   View,
   Text,
@@ -22,13 +22,20 @@ import firestore from '@react-native-firebase/firestore';
 import {GoogleSignin} from '@react-native-google-signin/google-signin';
 import appleAuth from '@invertase/react-native-apple-authentication';
 
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {useTheme, ThemeColors} from '../theme/ThemeContext';
 
 interface LoginScreenProps {
   onLoginSuccess: () => void;
 }
 
 const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
+  // Theme hook for dynamic theming
+  const {colors, isDark} = useTheme();
+  
+  // Create styles with current theme colors
+  const styles = useMemo(() => createStyles(colors), [colors]);
+  
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -570,10 +577,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
   );
 };
 
-const styles = StyleSheet.create({
+// Dynamic styles based on theme colors
+const createStyles = (colors: ThemeColors) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F0FDFA',
+    backgroundColor: colors.bgPrimary,
   },
   scrollContent: {
     flexGrow: 1,

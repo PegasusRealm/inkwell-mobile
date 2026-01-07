@@ -1,7 +1,7 @@
 /**
  * InkWell Mobile App
  * Firebase auth with React Navigation
- * BUILD VERSION: 2026-01-07-v1
+ * BUILD VERSION: 2026-01-07-v2-DARK-MODE
  */
 
 import React, {useEffect, useState} from 'react';
@@ -16,12 +16,22 @@ import notificationService from './src/services/notificationService';
 import {ThemeProvider, useTheme} from './src/theme';
 
 // Log on module load to verify fresh bundle
-console.log('🟣🟣🟣 APP MODULE LOADED - BUILD 2026-01-07-v1 🟣🟣🟣');
+console.log('🟣🟣🟣 APP MODULE LOADED - BUILD 2026-01-07-v2-DARK-MODE 🟣🟣🟣');
 
 function App(): React.JSX.Element {
+  return (
+    <ThemeProvider>
+      <AppWithAuth />
+    </ThemeProvider>
+  );
+}
+
+// Inner component that handles auth state
+function AppWithAuth(): React.JSX.Element {
   const [initializing, setInitializing] = useState(true);
   const [user, setUser] = useState<FirebaseAuthTypes.User | null>(null);
   const [showSplash, setShowSplash] = useState(true);
+  const {colors} = useTheme();
 
   // Log on component mount
   useEffect(() => {
@@ -53,34 +63,34 @@ function App(): React.JSX.Element {
   // Loading state
   if (initializing) {
     return (
-      <View style={styles.container}>
-        <Text style={styles.title}>Loading...</Text>
+      <View style={[styles.container, {backgroundColor: colors.bgPrimary}]}>
+        <StatusBar barStyle={colors.statusBar} />
+        <Text style={[styles.title, {color: colors.fontMain}]}>Loading...</Text>
       </View>
     );
   }
 
   // Show splash screen
   if (showSplash) {
-    return <SplashScreen onFinish={handleSplashFinish} />;
+    return (
+      <>
+        <StatusBar barStyle={colors.statusBar} />
+        <SplashScreen onFinish={handleSplashFinish} />
+      </>
+    );
   }
 
   // Show login if no user
   if (!user) {
-    return <LoginScreen onLoginSuccess={() => {}} />;
+    return (
+      <>
+        <StatusBar barStyle={colors.statusBar} />
+        <LoginScreen onLoginSuccess={() => {}} />
+      </>
+    );
   }
 
   // Show main app with React Navigation when logged in
-  return (
-    <ThemeProvider>
-      <AppContent user={user} />
-    </ThemeProvider>
-  );
-}
-
-// Separate component to use theme hook
-function AppContent({user}: {user: FirebaseAuthTypes.User}): React.JSX.Element {
-  const {colors} = useTheme();
-  
   return (
     <NavigationContainer>
       <StatusBar barStyle={colors.statusBar} />
@@ -94,12 +104,10 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1a1a2e',
   },
   title: {
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#ffffff',
     marginBottom: 16,
   },
 });
