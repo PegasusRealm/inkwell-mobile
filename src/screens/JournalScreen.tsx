@@ -35,6 +35,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   // Subscription hook for feature gating
   const {
     checkFeatureAndShowPaywall,
+    hasFeatureAccess,
     isPremium,
     isConnect,
     showPaywall,
@@ -110,12 +111,19 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 
   // AI gating helper - checks access and shows appropriate message
   const checkAndUseAI = async (featureName: string): Promise<boolean> => {
-    // Plus and Connect users have unlimited access
-    if (isPremium) {
+    // Check if user has AI feature access (Plus/Connect have unlimited)
+    // This properly awaits subscription initialization
+    const hasUnlimitedAI = await hasFeatureAccess('ai');
+    console.log(`🔐 AI Gating: hasUnlimitedAI=${hasUnlimitedAI} for ${featureName}`);
+    
+    if (hasUnlimitedAI) {
       return true;
     }
     
+    // Free user - check daily limit
     const access = await checkAIAccess();
+    console.log(`🔐 AI Gating: Free user check - canUse=${access.canUse}, remaining=${access.remaining}`);
+    
     if (!access.canUse) {
       Alert.alert(
         'Daily Limit Reached',
@@ -132,7 +140,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 
   // Update remaining count after AI use
   const afterAIUse = async () => {
-    if (!isPremium) {
+    // Only track usage for free users
+    const hasUnlimitedAI = await hasFeatureAccess('ai');
+    if (!hasUnlimitedAI) {
       await incrementAIUsage();
       const remaining = await getRemainingAICalls();
       setAiCallsRemaining(remaining);
@@ -521,11 +531,8 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         console.log('No manifest data found for today:', manifestError);
       }
 
-      // Parse tags
-      const tagsArray = tags
-        .split(',')
-        .map(t => t.trim())
-        .filter(t => t.length > 0);
+      // Initialize tags array for auto-generated tags
+      const tagsArray: string[] = [];
       
       // Add manifest tags if manifest data exists
       if (hasManifestData) {
@@ -569,7 +576,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         entryData.attachments = uploadedAttachments;
       }
 
-      const savedEntry = await firestore().collection('entries').add(entryData);
+      const savedEntry = await firestore().collection('journalEntries').add(entryData);
 
       // Generate embeddings in background (non-blocking)
       (async () => {
@@ -656,8 +663,11 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
     <ScrollView style={styles.container}>
       <View style={styles.content}>
         {/* Prompt Section */}
+        <Text style={styles.sophyIntro}>
+          Meet <Text style={styles.sophyName}>Sophy</Text> — your gentle journaling companion. Trained in wellness and psychology, she's here to offer insight and reflection (never instructions or "have-tos") to help you discover more from your journaling practice.
+        </Text>
         <Text style={styles.subtextMuted}>
-          If you want a topic or some inspiration, <Text style={styles.sophyName}>Sophy</Text> can suggest ideas — you can even give her a topic to focus on.
+          If you want a topic or some inspiration, Sophy can suggest ideas — you can even give her a topic to focus on.
         </Text>
 
         <TextInput
@@ -984,11 +994,19 @@ const styles = StyleSheet.create({
   },
   
   // Prompt Section Styles
-  subtextMuted: {
+  sophyIntro: {
     fontFamily: fontFamily.body,
     fontSize: fontSize.base,
     color: colors.fontSecondary,
     marginTop: spacing.base,
+    marginBottom: spacing.sm,
+    lineHeight: 24,
+  },
+  subtextMuted: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.base,
+    color: colors.fontSecondary,
+    marginTop: spacing.xs,
     marginBottom: spacing.base,
     lineHeight: 24,
   },

@@ -16,6 +16,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  SafeAreaView,
 } from 'react-native';
 import { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 import SubscriptionService, { AllOfferings } from '../services/SubscriptionService';
@@ -199,14 +200,14 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
-      <View style={styles.container}>
-        <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-          {/* Header */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-              <Text style={styles.closeButtonText}>✕</Text>
-            </TouchableOpacity>
-          </View>
+      <SafeAreaView style={styles.safeArea}>
+        <View style={styles.container}>
+          {/* Fixed Close Button - outside ScrollView for easy access */}
+          <TouchableOpacity onPress={onClose} style={styles.closeButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+            <Text style={styles.closeButtonText}>✕</Text>
+          </TouchableOpacity>
+          
+          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
 
           {/* Title */}
           <View style={styles.titleSection}>
@@ -229,7 +230,9 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
 
             <View style={styles.featuresRow}>
               <FeatureChip icon="🤖" text="Unlimited AI" />
-              <FeatureChip icon="📱" text="SMS Reminders" />
+              <FeatureChip icon="🎙️" text="Voice Analysis" />
+              <FeatureChip icon="🔔" text="Reminders" />
+              <FeatureChip icon="📎" text="File Attachments" />
               <FeatureChip icon="📊" text="Insights" />
               <FeatureChip icon="📤" text="Export" />
             </View>
@@ -297,6 +300,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
               <View style={styles.featuresRow}>
                 <FeatureChip icon="🧠" text="All Plus Features" />
                 <FeatureChip icon="👤" text="1 Message/Week" />
+                <FeatureChip icon="🤝" text="Choose Your Human" />
                 <FeatureChip icon="⚡" text="Priority Support" />
               </View>
 
@@ -354,7 +358,8 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             </Text>
           </View>
         </ScrollView>
-      </View>
+        </View>
+      </SafeAreaView>
     </Modal>
   );
 };
@@ -368,9 +373,30 @@ const FeatureChip: React.FC<{ icon: string; text: string }> = ({ icon, text }) =
 );
 
 const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
   container: {
     flex: 1,
     backgroundColor: '#fff',
+  },
+  closeButton: {
+    position: 'absolute',
+    top: spacing.sm,
+    right: spacing.md,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#f0f0f0',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 10,
+  },
+  closeButtonText: {
+    fontSize: fontSize.xl,
+    color: colors.fontSecondary,
+    fontWeight: '600',
   },
   loadingContainer: {
     flex: 1,
@@ -418,23 +444,8 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     padding: spacing.lg,
+    paddingTop: spacing.xxxl + spacing.lg, // Extra top padding for close button
     paddingBottom: 40,
-  },
-  header: {
-    alignItems: 'flex-end',
-    marginBottom: spacing.xs,
-  },
-  closeButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#f0f0f0',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  closeButtonText: {
-    fontSize: fontSize.xl,
-    color: colors.fontSecondary,
   },
   titleSection: {
     alignItems: 'center',

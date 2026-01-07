@@ -13,6 +13,14 @@ export {
   textStyles 
 } from './typography';
 export { spacing, borderRadius } from './spacing';
+export { 
+  ThemeProvider, 
+  useTheme, 
+  useColors,
+  lightColors,
+  darkColors,
+} from './ThemeContext';
+export type { ThemeMode, ThemeColors } from './ThemeContext';
 
 // Convenience combined export
 export const theme = {

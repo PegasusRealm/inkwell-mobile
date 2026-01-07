@@ -2,6 +2,7 @@
  * AI Usage Service
  * Tracks daily AI usage for free tier users
  * Free users get 3 AI calls per day (Plus/Connect get unlimited)
+ * Daily reset at midnight UTC-10 (Hawaii time, where InkWell operates)
  */
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,16 +13,22 @@ const AI_USAGE_KEY = 'ai_usage_today';
 const FREE_DAILY_LIMIT = 3;
 
 interface AIUsageData {
-  date: string; // YYYY-MM-DD format
+  date: string; // YYYY-MM-DD format in UTC-10
   count: number;
   lastReset: string;
 }
 
 /**
- * Get today's date in YYYY-MM-DD format
+ * Get today's date in YYYY-MM-DD format (UTC-10 Hawaii time)
+ * This ensures the daily reset happens at midnight Hawaii time
  */
 function getTodayString(): string {
-  return new Date().toISOString().split('T')[0];
+  const now = new Date();
+  // UTC-10 = subtract 10 hours from UTC
+  const hawaiiOffset = -10 * 60; // -10 hours in minutes
+  const utcOffset = now.getTimezoneOffset(); // local offset in minutes (positive = behind UTC)
+  const hawaiiTime = new Date(now.getTime() + (utcOffset + hawaiiOffset) * 60 * 1000);
+  return hawaiiTime.toISOString().split('T')[0];
 }
 
 /**
@@ -29,12 +36,15 @@ function getTodayString(): string {
  */
 async function getLocalUsage(): Promise<AIUsageData> {
   try {
+    const todayStr = getTodayString();
     const stored = await AsyncStorage.getItem(AI_USAGE_KEY);
     if (stored) {
       const data: AIUsageData = JSON.parse(stored);
-      // Reset if it's a new day
-      if (data.date !== getTodayString()) {
-        return { date: getTodayString(), count: 0, lastReset: new Date().toISOString() };
+      console.log(`🔢 AI Usage: ${data.count}/${FREE_DAILY_LIMIT} (date: ${data.date}, today: ${todayStr})`);
+      // Reset if it's a new day (Hawaii time)
+      if (data.date !== todayStr) {
+        console.log('🔄 New day detected (Hawaii time) - resetting AI usage');
+        return { date: todayStr, count: 0, lastReset: new Date().toISOString() };
       }
       return data;
     }
@@ -144,6 +154,8 @@ export async function checkAIAccess(): Promise<{
   const data = await getLocalUsage();
   const remaining = Math.max(0, FREE_DAILY_LIMIT - data.count);
   const canUse = remaining > 0;
+  
+  console.log(`🤖 AI Access Check: canUse=${canUse}, remaining=${remaining}, used=${data.count}`);
   
   return {
     canUse,

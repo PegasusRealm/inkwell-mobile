@@ -1,7 +1,7 @@
 /**
  * InkWell Mobile App
  * Firebase auth with React Navigation
- * BUILD VERSION: 2026-01-06-v2
+ * BUILD VERSION: 2026-01-07-v1
  */
 
 import React, {useEffect, useState} from 'react';
@@ -13,9 +13,10 @@ import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
 import RootNavigator from './src/navigation/RootNavigator';
 import notificationService from './src/services/notificationService';
+import {ThemeProvider, useTheme} from './src/theme';
 
 // Log on module load to verify fresh bundle
-console.log('🟣🟣🟣 APP MODULE LOADED - BUILD 2026-01-06-v2 🟣🟣🟣');
+console.log('🟣🟣🟣 APP MODULE LOADED - BUILD 2026-01-07-v1 🟣🟣🟣');
 
 function App(): React.JSX.Element {
   const [initializing, setInitializing] = useState(true);
@@ -70,8 +71,19 @@ function App(): React.JSX.Element {
 
   // Show main app with React Navigation when logged in
   return (
+    <ThemeProvider>
+      <AppContent user={user} />
+    </ThemeProvider>
+  );
+}
+
+// Separate component to use theme hook
+function AppContent({user}: {user: FirebaseAuthTypes.User}): React.JSX.Element {
+  const {colors} = useTheme();
+  
+  return (
     <NavigationContainer>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle={colors.statusBar} />
       <RootNavigator />
     </NavigationContainer>
   );

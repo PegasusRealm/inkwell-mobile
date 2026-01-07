@@ -10,11 +10,15 @@ import {
   Modal,
   ActivityIndicator,
   Switch,
+  Share,
+  Platform,
 } from 'react-native';
+import ReactNativeBlobUtil from 'react-native-blob-util';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import {colors, spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {colors, spacing, borderRadius, fontFamily, fontSize, useTheme} from '../theme';
+import type {ThemeMode} from '../theme';
 import type {RootStackScreenProps} from '../navigation/types';
 import {useSubscription} from '../hooks/useSubscription';
 import PaywallModal from '../components/PaywallModal';
@@ -23,6 +27,8 @@ export default function SettingsScreen({
   navigation,
 }: RootStackScreenProps<'Settings'>) {
   const user = auth().currentUser;
+  const {colors, themeMode, setThemeMode, isDark} = useTheme();
+  
   const [practitioners, setPractitioners] = useState<Array<{id: string; name: string; email: string}>>([]);
   const [loadingPractitioners, setLoadingPractitioners] = useState(true);
   const [approvedPractitioners, setApprovedPractitioners] = useState<Array<{id: string; name: string; email: string; specialties?: string[]}>>([]);
@@ -50,6 +56,9 @@ export default function SettingsScreen({
   const [smsWeeklyInsights, setSmsWeeklyInsights] = useState(false);
   const [savingSms, setSavingSms] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState('America/New_York');
+  
+  // Export state
+  const [exporting, setExporting] = useState(false);
   
   const {
     tier: subscriptionTier,
@@ -242,6 +251,211 @@ export default function SettingsScreen({
     } finally {
       setSavingSms(false);
     }
+  };
+
+  // Export user data function
+  const handleExportData = async () => {
+    if (!user) return;
+
+    // Check Plus subscription
+    if (!isPremium) {
+      Alert.alert(
+        'Plus Feature',
+        'Export your journal data is a Plus feature. Upgrade to download all your entries.',
+        [
+          { text: 'Maybe Later', style: 'cancel' },
+          { text: 'Upgrade', onPress: handleUpgradePress },
+        ]
+      );
+      return;
+    }
+
+    setExporting(true);
+    try {
+      // Collect journal entries
+      const entriesSnapshot = await firestore()
+        .collection('journalEntries')
+        .where('userId', '==', user.uid)
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      const journalEntries = entriesSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          text: data.text || '',
+          createdAt: data.createdAt?.toDate()?.toISOString() || null,
+          promptUsed: data.promptUsed || null,
+          reflectionUsed: data.reflectionUsed || null,
+          tags: data.tags || [],
+          attachmentNames: data.attachments?.map((a: any) => a.name) || [],
+        };
+      });
+
+      // Collect manifests
+      const manifestsSnapshot = await firestore()
+        .collection('manifests')
+        .doc(user.uid)
+        .collection('entries')
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      const manifests = manifestsSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          date: data.date || '',
+          wish: data.wish || '',
+          outcome: data.outcome || '',
+          opposition: data.opposition || '',
+          plan: data.plan || '',
+          createdAt: data.createdAt?.toDate()?.toISOString() || null,
+        };
+      });
+
+      // Build export data
+      const exportData = {
+        exportInfo: {
+          exportDate: new Date().toISOString(),
+          userEmail: user.email,
+          appVersion: '1.0.0',
+          platform: Platform.OS,
+        },
+        statistics: {
+          totalJournalEntries: journalEntries.length,
+          totalManifests: manifests.length,
+          firstEntryDate: journalEntries.length > 0 
+            ? journalEntries[journalEntries.length - 1].createdAt 
+            : null,
+          mostRecentEntryDate: journalEntries.length > 0 
+            ? journalEntries[0].createdAt 
+            : null,
+        },
+        journalEntries,
+        manifests,
+      };
+
+      // Create readable text version
+      const readableExport = generateReadableExport(exportData);
+
+      // Save to temp file and share
+      const fileName = `InkWell_Export_${new Date().toISOString().split('T')[0]}.txt`;
+      const cacheDir = ReactNativeBlobUtil.fs.dirs.CacheDir;
+      const filePath = `${cacheDir}/${fileName}`;
+      
+      await ReactNativeBlobUtil.fs.writeFile(filePath, readableExport, 'utf8');
+
+      await Share.share({
+        title: 'InkWell Journal Export',
+        message: readableExport.substring(0, 500) + '...\n\n[Full export attached]',
+        url: Platform.OS === 'ios' ? filePath : `file://${filePath}`,
+      });
+
+      // Also offer JSON export
+      Alert.alert(
+        'Export Complete!',
+        `Exported ${journalEntries.length} journal entries and ${manifests.length} manifests.`,
+        [
+          { text: 'Done', style: 'default' },
+          { 
+            text: 'Export as JSON', 
+            onPress: async () => {
+              const jsonFileName = `InkWell_Export_${new Date().toISOString().split('T')[0]}.json`;
+              const jsonPath = `${cacheDir}/${jsonFileName}`;
+              await ReactNativeBlobUtil.fs.writeFile(jsonPath, JSON.stringify(exportData, null, 2), 'utf8');
+              await Share.share({
+                title: 'InkWell Journal Export (JSON)',
+                url: Platform.OS === 'ios' ? jsonPath : `file://${jsonPath}`,
+              });
+            }
+          },
+        ]
+      );
+
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      Alert.alert('Export Failed', 'Unable to export your data. Please try again.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  // Generate human-readable export text
+  const generateReadableExport = (data: any): string => {
+    let text = '═══════════════════════════════════════════\n';
+    text += '           INKWELL JOURNAL EXPORT\n';
+    text += '═══════════════════════════════════════════\n\n';
+    text += `Export Date: ${new Date().toLocaleDateString()}\n`;
+    text += `Account: ${data.exportInfo.userEmail}\n\n`;
+    
+    text += '───────────────────────────────────────────\n';
+    text += '                 STATISTICS\n';
+    text += '───────────────────────────────────────────\n';
+    text += `Total Journal Entries: ${data.statistics.totalJournalEntries}\n`;
+    text += `Total Manifests: ${data.statistics.totalManifests}\n`;
+    if (data.statistics.firstEntryDate) {
+      text += `First Entry: ${new Date(data.statistics.firstEntryDate).toLocaleDateString()}\n`;
+    }
+    if (data.statistics.mostRecentEntryDate) {
+      text += `Most Recent: ${new Date(data.statistics.mostRecentEntryDate).toLocaleDateString()}\n`;
+    }
+    text += '\n';
+
+    // Journal Entries
+    text += '═══════════════════════════════════════════\n';
+    text += '              JOURNAL ENTRIES\n';
+    text += '═══════════════════════════════════════════\n\n';
+
+    data.journalEntries.forEach((entry: any, index: number) => {
+      const date = entry.createdAt 
+        ? new Date(entry.createdAt).toLocaleDateString('en-US', { 
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' 
+          })
+        : 'Unknown date';
+      
+      text += `───────────────────────────────────────────\n`;
+      text += `Entry ${index + 1} - ${date}\n`;
+      text += `───────────────────────────────────────────\n`;
+      
+      if (entry.promptUsed) {
+        text += `\n📝 Prompt: ${entry.promptUsed}\n`;
+      }
+      
+      text += `\n${entry.text}\n`;
+      
+      if (entry.reflectionUsed) {
+        text += `\n✨ Sophy's Reflection:\n${entry.reflectionUsed}\n`;
+      }
+      
+      if (entry.attachmentNames?.length > 0) {
+        text += `\n📎 Attachments: ${entry.attachmentNames.join(', ')}\n`;
+      }
+      
+      text += '\n';
+    });
+
+    // Manifests
+    if (data.manifests.length > 0) {
+      text += '═══════════════════════════════════════════\n';
+      text += '              WISH MANIFESTS\n';
+      text += '═══════════════════════════════════════════\n\n';
+
+      data.manifests.forEach((manifest: any, index: number) => {
+        text += `───────────────────────────────────────────\n`;
+        text += `Manifest ${index + 1} - ${manifest.date || 'Unknown date'}\n`;
+        text += `───────────────────────────────────────────\n`;
+        text += `🌟 Wish: ${manifest.wish}\n`;
+        text += `🎯 Outcome: ${manifest.outcome}\n`;
+        text += `⚡ Opposition: ${manifest.opposition}\n`;
+        text += `📋 Plan: ${manifest.plan}\n\n`;
+      });
+    }
+
+    text += '═══════════════════════════════════════════\n';
+    text += '        Thank you for using InkWell!\n';
+    text += '═══════════════════════════════════════════\n';
+
+    return text;
   };
 
   const handleConnectToApproved = async () => {
@@ -716,10 +930,10 @@ export default function SettingsScreen({
         )}
       </View>
 
-      {/* SMS Notifications Section */}
+      {/* Notifications Section */}
       <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>📱 SMS Notifications</Text>
+          <Text style={styles.sectionTitle}>🔔 Notifications</Text>
           {!isPremium && (
             <View style={[styles.tierBadge, styles.plusBadge]}>
               <Text style={styles.tierBadgeText}>Plus</Text>
@@ -856,6 +1070,100 @@ export default function SettingsScreen({
             </TouchableOpacity>
           </View>
         )}
+      </View>
+
+      {/* Export Data Section */}
+      <View style={styles.section}>
+        <View style={styles.sectionTitleRow}>
+          <Text style={styles.sectionTitle}>📤 Export Data</Text>
+          {!isPremium && (
+            <View style={[styles.tierBadge, styles.plusBadge]}>
+              <Text style={styles.tierBadgeText}>Plus</Text>
+            </View>
+          )}
+        </View>
+        
+        {!isPremium ? (
+          <View style={styles.card}>
+            <Text style={styles.lockedFeatureText}>
+              🔒 Upgrade to Plus to export your journal entries, manifests, and Sophy reflections as a downloadable file.
+            </Text>
+            <TouchableOpacity 
+              style={styles.upgradePromptButton}
+              onPress={handleUpgradePress}>
+              <Text style={styles.upgradePromptButtonText}>Upgrade to Plus</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View style={styles.card}>
+            <Text style={styles.exportDescription}>
+              Download all your journal entries, WISH manifests, and Sophy reflections. Export as readable text or JSON format.
+            </Text>
+            <TouchableOpacity
+              style={[styles.exportButton, exporting && styles.exportButtonDisabled]}
+              onPress={handleExportData}
+              disabled={exporting}>
+              {exporting ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <Text style={styles.exportButtonText}>📥 Export My Data</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Theme Section */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>🎨 Appearance</Text>
+        <View style={styles.card}>
+          <Text style={styles.themeLabel}>Theme</Text>
+          <View style={styles.themeOptions}>
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'light' && styles.themeOptionSelected,
+              ]}
+              onPress={() => setThemeMode('light')}>
+              <Text style={styles.themeOptionIcon}>☀️</Text>
+              <Text style={[
+                styles.themeOptionText,
+                themeMode === 'light' && styles.themeOptionTextSelected,
+              ]}>Light</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'dark' && styles.themeOptionSelected,
+              ]}
+              onPress={() => setThemeMode('dark')}>
+              <Text style={styles.themeOptionIcon}>🌙</Text>
+              <Text style={[
+                styles.themeOptionText,
+                themeMode === 'dark' && styles.themeOptionTextSelected,
+              ]}>Dark</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity
+              style={[
+                styles.themeOption,
+                themeMode === 'system' && styles.themeOptionSelected,
+              ]}
+              onPress={() => setThemeMode('system')}>
+              <Text style={styles.themeOptionIcon}>⚙️</Text>
+              <Text style={[
+                styles.themeOptionText,
+                themeMode === 'system' && styles.themeOptionTextSelected,
+              ]}>System</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={styles.themeHint}>
+            {themeMode === 'system' 
+              ? `Currently using ${isDark ? 'dark' : 'light'} mode based on your device settings`
+              : `${themeMode === 'dark' ? 'Dark' : 'Light'} mode active`}
+          </Text>
+        </View>
       </View>
 
       {/* App Info Section */}
@@ -1565,5 +1873,84 @@ const styles = StyleSheet.create({
     color: colors.fontWhite,
     fontSize: fontSize.md,
     letterSpacing: 0.5,
+  },
+  // Export Section Styles
+  lockedFeatureText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+    lineHeight: 22,
+    marginBottom: spacing.md,
+  },
+  exportDescription: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+    lineHeight: 22,
+    marginBottom: spacing.md,
+  },
+  exportButton: {
+    backgroundColor: colors.brandPrimary,
+    paddingVertical: spacing.sm + 2,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 44,
+  },
+  exportButtonDisabled: {
+    backgroundColor: '#718096',
+  },
+  exportButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: '#ffffff',
+    fontSize: fontSize.md,
+    letterSpacing: 0.5,
+  },
+  // Theme Selector Styles
+  themeLabel: {
+    fontFamily: fontFamily.bodyBold,
+    fontSize: fontSize.md,
+    color: '#2D3748',
+    marginBottom: spacing.md,
+  },
+  themeOptions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: spacing.sm,
+  },
+  themeOption: {
+    flex: 1,
+    alignItems: 'center',
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    borderWidth: 2,
+    borderColor: '#E2E8F0',
+    backgroundColor: '#F7F6F5',
+  },
+  themeOptionSelected: {
+    borderColor: '#2A6972',
+    backgroundColor: 'rgba(42, 105, 114, 0.1)',
+  },
+  themeOptionIcon: {
+    fontSize: 24,
+    marginBottom: 4,
+  },
+  themeOptionText: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.sm,
+    color: '#4A5568',
+  },
+  themeOptionTextSelected: {
+    fontFamily: fontFamily.buttonBold,
+    color: '#2A6972',
+  },
+  themeHint: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: '#718096',
+    marginTop: spacing.sm,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
