@@ -100,7 +100,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         .doc(userId)
         .get();
 
-      if (manifestDoc.exists) {
+      if (manifestDoc.exists()) {
         const data = manifestDoc.data();
         if (data) {
           setWantText(data.want || '');

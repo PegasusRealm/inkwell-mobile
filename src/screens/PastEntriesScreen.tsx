@@ -535,7 +535,7 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
             onChangeText={setEditText}
             multiline
             placeholder="Edit your journal entry..."
-            placeholderTextColor={colors.textSecondary}
+            placeholderTextColor={colors.fontSecondary}
             autoFocus
           />
           <View style={styles.modalActions}>

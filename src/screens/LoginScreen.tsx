@@ -78,7 +78,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       console.log('🔵 Google signIn result:', JSON.stringify(signInResult, null, 2));
       
       // v10+ API: idToken is in signInResult.data.idToken
-      const idToken = signInResult.data?.idToken || signInResult.idToken;
+      const idToken = signInResult.data?.idToken || (signInResult as any).idToken;
       console.log('🔵 Got idToken:', idToken ? `${idToken.substring(0, 50)}...` : 'NULL');
       
       if (!idToken) {
@@ -97,7 +97,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         email: userCredential.user.email,
         displayName: userCredential.user.displayName || '',
         signupUsername: userCredential.user.displayName || userCredential.user.email?.split('@')[0] || '',
-        photoURL: userCredential.user.photoURL || '',
+        avatar: userCredential.user.photoURL || '',
         userRole: 'journaler',
         authProvider: 'google',
         agreementAccepted: true,
@@ -128,6 +128,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         },
         createdAt: firestore.FieldValue.serverTimestamp(),
         updatedAt: firestore.FieldValue.serverTimestamp(),
+        lastLoginAt: firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
       console.log('🔵 Firestore user document created/updated!');
       
@@ -178,7 +179,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           email: userCredential.user.email,
           displayName: displayName,
           signupUsername: displayName,
-          photoURL: userCredential.user.photoURL || '',
+          avatar: userCredential.user.photoURL || '',
           userRole: 'journaler', // Match web app role
           authProvider: 'apple',
           agreementAccepted: true,
@@ -211,6 +212,12 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           },
           createdAt: firestore.FieldValue.serverTimestamp(),
           updatedAt: firestore.FieldValue.serverTimestamp(),
+          lastLoginAt: firestore.FieldValue.serverTimestamp(),
+        });
+      } else {
+        // Existing user - just update lastLoginAt
+        await firestore().collection('users').doc(userCredential.user.uid).update({
+          lastLoginAt: firestore.FieldValue.serverTimestamp(),
         });
       }
       
@@ -244,7 +251,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
 
     setLoading(true);
     try {
-      await auth().signInWithEmailAndPassword(email, password);
+      const userCredential = await auth().signInWithEmailAndPassword(email, password);
+      // Track last login time
+      await firestore().collection('users').doc(userCredential.user.uid).update({
+        lastLoginAt: firestore.FieldValue.serverTimestamp(),
+      });
       onLoginSuccess();
     } catch (error: any) {
       let message = 'Login failed. Please try again.';
@@ -318,7 +329,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           email: email,
           displayName: displayName.trim(),
           signupUsername: displayName.trim(),
-          photoURL: '',
+          avatar: '',
           userRole: 'journaler',
           authProvider: 'email',
           agreementAccepted: true,

@@ -134,14 +134,15 @@ export default function SettingsScreen({
   const loadApprovedPractitioners = async () => {
     setLoadingApproved(true);
     try {
+      // Query users collection for anyone with userRole 'coach' or accountType 'coach'
       const snapshot = await firestore()
-        .collection('approvedPractitioners')
-        .where('status', '==', 'active')
+        .collection('users')
+        .where('userRole', '==', 'coach')
         .get();
       
       const approved = snapshot.docs.map(doc => ({
         id: doc.id,
-        name: doc.data().name || 'Practitioner',
+        name: doc.data().displayName || doc.data().signupUsername || 'Practitioner',
         email: doc.data().email || '',
         specialties: doc.data().specialties || [],
       }));

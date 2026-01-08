@@ -435,7 +435,12 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         return true;
       });
 
-      setAttachments(prev => [...prev, ...validFiles]);
+      setAttachments(prev => [...prev, ...validFiles.map(f => ({
+        uri: f.uri,
+        name: f.name || 'file',
+        type: f.type || 'application/octet-stream',
+        size: f.size || 0,
+      }))]);
     } catch (error: any) {
       if (!DocumentPicker.isCancel(error)) {
         console.error('File picker error:', error);
@@ -979,7 +984,6 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       <PaywallModal
         visible={showPaywall}
         onClose={closePaywall}
-        featureContext="Attach files and photos to your journal entries"
       />
     </ScrollView>
   );
@@ -1195,6 +1199,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.fontWhite,
     fontSize: fontSize.md,
     letterSpacing: 0.5,
+  },
+  characterCount: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMuted,
+    textAlign: 'right',
+    marginBottom: spacing.sm,
   },
   helpText: {
     fontFamily: fontFamily.body,
