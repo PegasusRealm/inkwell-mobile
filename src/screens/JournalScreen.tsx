@@ -81,15 +81,6 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   const [attachments, setAttachments] = useState<Array<{uri: string; name: string; type: string; size: number}>>([]);
   const [uploadingFiles, setUploadingFiles] = useState(false);
 
-  // Cleanup audio recorder on unmount
-  useEffect(() => {
-    return () => {
-      if (audioRecorderPlayer) {
-        audioRecorderPlayer.removeRecordBackListener();
-      }
-    };
-  }, [audioRecorderPlayer]);
-
   // Journal state
   const [journalEntry, setJournalEntry] = useState('');
   const [saving, setSaving] = useState(false);
