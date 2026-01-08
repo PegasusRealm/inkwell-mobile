@@ -98,12 +98,12 @@ export async function getReflection(text: string): Promise<string> {
 }
 
 /**
- * Transcribe and clean up voice recording
- * @param audioFilePath - Path to the recorded audio file on device
+ * Process voice transcript with AI cleanup and emotional analysis (Premium feature)
+ * @param transcript - The raw transcript text from native speech recognition
  * @returns Cleaned transcript text with optional emotional insights
  */
 export async function transcribeVoice(
-  audioFilePath: string,
+  transcript: string,
 ): Promise<{cleanedText: string; emotionalInsights?: any}> {
   try {
     const currentUser = auth().currentUser;
@@ -111,33 +111,20 @@ export async function transcribeVoice(
       throw new Error('User must be authenticated');
     }
 
-    // Generate unique filename for storage
-    const timestamp = Date.now();
-    const filename = `voice-recordings/${currentUser.uid}/${timestamp}.m4a`;
+    console.log('🎙️ Processing voice transcript with AI:', transcript.substring(0, 50) + '...');
 
-    console.log('📤 Uploading audio file to Firebase Storage:', filename);
-
-    // Upload audio file to Firebase Storage
-    const reference = storage().ref(filename);
-    await reference.putFile(audioFilePath);
-
-    // Get download URL
-    const downloadURL = await reference.getDownloadURL();
-
-    console.log('🎙️ Audio uploaded, calling processVoiceWithEmotion');
-
-    // Call Cloud Function to transcribe and clean the audio
+    // Call Cloud Function to clean the transcript and add emotional analysis
     const response = await callCloudFunction<{
       cleanedText: string;
       emotionalInsights?: any;
     }>('processVoiceWithEmotion', {
-      audioURL: downloadURL,
-      hasAudio: true,
+      transcript: transcript,
+      hasAudio: false, // We're sending text, not audio
     });
 
     return response;
   } catch (error) {
-    console.error('Error transcribing voice:', error);
+    console.error('Error processing voice transcript:', error);
     throw error;
   }
 }

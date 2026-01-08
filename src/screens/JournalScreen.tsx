@@ -16,7 +16,10 @@ import {
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
-import AudioRecorderPlayer from 'react-native-audio-recorder-player';
+import Voice, {
+  SpeechResultsEvent,
+  SpeechErrorEvent,
+} from '@react-native-voice/voice';
 import DocumentPicker from 'react-native-document-picker';
 import storage from '@react-native-firebase/storage';
 import firestore from '@react-native-firebase/firestore';
@@ -69,11 +72,10 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   const [savePromptChecked, setSavePromptChecked] = useState(false);
   const [generatingPrompt, setGeneratingPrompt] = useState(false);
 
-  // InkOutLoud Voice Recording state
-  const [audioRecorderPlayer] = useState(() => new AudioRecorderPlayer());
+  // InkOutLoud Voice Recording state (using native speech recognition)
   const [isRecording, setIsRecording] = useState(false);
-  const [recordingDuration, setRecordingDuration] = useState('00:00');
-  const [recordingPath, setRecordingPath] = useState('');
+  const [voiceText, setVoiceText] = useState(''); // Current recognized text
+  const [voicePartialText, setVoicePartialText] = useState(''); // Partial results while speaking
 
   // File Attachments state
   const [attachments, setAttachments] = useState<Array<{uri: string; name: string; type: string; size: number}>>([]);
@@ -261,6 +263,47 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
     }
   };
 
+  // ==================== InkOutLoud Voice Recognition ====================
+  
+  // Set up Voice recognition listeners
+  useEffect(() => {
+    // Handle final speech results
+    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
+      console.log('🎙️ Speech results:', e.value);
+      if (e.value && e.value[0]) {
+        setVoiceText(e.value[0]);
+      }
+    };
+
+    // Handle partial results (while speaking)
+    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
+      if (e.value && e.value[0]) {
+        setVoicePartialText(e.value[0]);
+      }
+    };
+
+    // Handle speech errors
+    Voice.onSpeechError = (e: SpeechErrorEvent) => {
+      console.error('Speech error:', e.error);
+      setIsRecording(false);
+      // Don't show alert for common "no speech" errors
+      if (e.error?.message && !e.error.message.includes('No speech')) {
+        Alert.alert('Speech Error', 'Could not recognize speech. Please try again.');
+      }
+    };
+
+    // Handle end of speech
+    Voice.onSpeechEnd = () => {
+      console.log('🎙️ Speech ended');
+      setIsRecording(false);
+    };
+
+    // Cleanup listeners on unmount
+    return () => {
+      Voice.destroy().then(Voice.removeAllListeners);
+    };
+  }, []);
+
   const requestMicrophonePermission = async (): Promise<boolean> => {
     if (Platform.OS === 'android') {
       try {
@@ -268,7 +311,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           PermissionsAndroid.PERMISSIONS.RECORD_AUDIO,
           {
             title: 'Microphone Permission',
-            message: 'InkWell needs access to your microphone to record voice journal entries.',
+            message: 'InkWell needs access to your microphone for voice journaling.',
             buttonNeutral: 'Ask Me Later',
             buttonNegative: 'Cancel',
             buttonPositive: 'OK',
@@ -284,71 +327,54 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   };
 
   const handleStartRecording = async () => {
-    console.log('🎙️ Starting recording...');
-    console.log('audioRecorderPlayer:', audioRecorderPlayer);
+    console.log('🎙️ Starting voice recognition...');
     
-    if (!audioRecorderPlayer) {
-      Alert.alert(
-        'Simulator Limitation',
-        'Voice recording may not work on iOS Simulator. Please test on a real device for full InkOutLoud functionality.',
-      );
-      return;
-    }
-
     const hasPermission = await requestMicrophonePermission();
     if (!hasPermission) {
-      Alert.alert('Permission Denied', 'Microphone access is required for voice recording.');
+      Alert.alert('Permission Denied', 'Microphone access is required for InkOutLoud.');
       return;
     }
 
     try {
-      const path = Platform.select({
-        ios: 'inkwell-recording.m4a',
-        android: 'sdcard/inkwell-recording.mp4',
-      });
-
-      console.log('📁 Recording path:', path);
-      const result = await audioRecorderPlayer.startRecorder(path);
-      console.log('✅ Recording started:', result);
-      
-      audioRecorderPlayer.addRecordBackListener((e) => {
-        const duration = audioRecorderPlayer.mmssss(
-          Math.floor(e.currentPosition),
-        ).substring(0, 5);
-        setRecordingDuration(duration);
-      });
-      
+      setVoiceText('');
+      setVoicePartialText('');
+      await Voice.start('en-US');
       setIsRecording(true);
-      setRecordingPath(path || '');
     } catch (error: any) {
-      console.error('Recording error:', error);
+      console.error('Voice start error:', error);
       Alert.alert(
-        'Recording Failed',
-        Platform.OS === 'ios'
-          ? 'Voice recording is not supported on iOS Simulator. Please test on a real device.'
-          : 'Failed to start recording. Please check microphone permissions.',
+        'Voice Recognition Failed',
+        'Could not start voice recognition. Please try again.',
       );
     }
   };
 
   const handleStopRecording = async () => {
     try {
-      const result = await audioRecorderPlayer.stopRecorder();
-      audioRecorderPlayer.removeRecordBackListener();
+      await Voice.stop();
       setIsRecording(false);
-      setRecordingDuration('00:00');
       
-      // Check if user has Plus for AI transcription + emotional analysis
+      // Get the final recognized text
+      const recognizedText = voiceText || voicePartialText;
+      
+      if (!recognizedText || recognizedText.trim().length === 0) {
+        Alert.alert('No Speech Detected', 'Please try speaking again.');
+        return;
+      }
+      
+      console.log('🎙️ Recognized text:', recognizedText);
+      
+      // Check if user has Plus for AI cleanup + emotional analysis
       if (isPremium) {
-        // Plus/Connect users get full AI transcription with emotional analysis
+        // Plus/Connect users get AI cleanup and emotional analysis
         Alert.alert(
           'Processing Voice...',
-          'Transcribing with AI and analyzing emotional patterns. This may take a moment.',
+          'Enhancing your text with AI and analyzing emotional patterns.',
         );
         
         try {
-          // Upload and transcribe the audio file with AI
-          const transcriptionResult = await transcribeVoice(result);
+          // Send transcript to cloud function for AI cleanup and emotional analysis
+          const transcriptionResult = await transcribeVoice(recognizedText);
           
           // Insert cleaned text into journal entry
           setJournalEntry(
@@ -357,46 +383,46 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           );
           
           Alert.alert(
-            '✨ Voice Transcribed!',
+            '✨ Voice Processed!',
             'Your voice has been transcribed with clean grammar and emotional insights.',
           );
           
           // Show emotional insights if available
-          if (transcriptionResult.emotionalInsights) {
-            console.log(
-              'Emotional insights:',
-              transcriptionResult.emotionalInsights,
-            );
-            // Display Sophy insight if available
-            if (transcriptionResult.emotionalInsights.sophyInsight) {
-              setSophyReflection(transcriptionResult.emotionalInsights.sophyInsight);
-              setSaveReflectionChecked(true);
-            }
+          if (transcriptionResult.emotionalInsights?.sophyInsight) {
+            setSophyReflection(transcriptionResult.emotionalInsights.sophyInsight);
+            setSaveReflectionChecked(true);
           }
         } catch (transcriptionError: any) {
-          console.error('Transcription error:', transcriptionError);
-          Alert.alert(
-            'Transcription Failed',
-            transcriptionError.message ||
-              'Could not transcribe audio. Please try again.',
+          console.error('AI processing error:', transcriptionError);
+          // Fall back to raw text if AI fails
+          setJournalEntry(
+            (prevText) => prevText + (prevText ? ' ' : '') + recognizedText,
           );
+          Alert.alert('Note', 'Voice added. AI enhancement unavailable.');
         }
       } else {
-        // Free users get basic device recording saved but no AI transcription
+        // Free users get raw transcription directly inserted
+        setJournalEntry(
+          (prevText) => prevText + (prevText ? ' ' : '') + recognizedText,
+        );
+        
         Alert.alert(
-          '🎙️ Recording Saved',
-          'Upgrade to Plus for AI transcription with clean grammar and emotional reflection!',
+          '🎙️ Voice Added!',
+          'Your words have been added. Upgrade to Plus for AI grammar cleanup and emotional insights!',
           [
-            { text: 'Keep Recording', style: 'cancel' },
-            { text: 'Upgrade', onPress: () => checkFeatureAndShowPaywall('ai') },
+            { text: 'Got It', style: 'cancel' },
+            { text: 'Learn More', onPress: () => checkFeatureAndShowPaywall('ai') },
           ]
         );
-        // For now, free users just see a note that the audio was recorded
-        // In production, you could save the raw audio or use device-only transcription
       }
+      
+      // Clear voice state
+      setVoiceText('');
+      setVoicePartialText('');
+      
     } catch (error) {
       console.error('Stop recording error:', error);
-      Alert.alert('Error', 'Failed to stop recording.');
+      Alert.alert('Error', 'Failed to stop voice recognition.');
     }
   };
 
@@ -738,7 +764,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           ]}
           onPress={handleVoiceToggle}>
           <Text style={styles.voiceButtonText}>
-            {isRecording ? 'Stop Recording' : 'InkOutLoud'}
+            {isRecording ? '🛑 Stop Listening' : '🎙️ InkOutLoud'}
           </Text>
         </TouchableOpacity>
 
@@ -746,15 +772,22 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           <>
             <Text style={styles.voiceHint}>Tap to voice transcribe</Text>
             {!isPremium && (
-              <Text style={styles.voiceHintPlus}>✨ Plus offers full transcription with clean grammar & emotional reflection</Text>
+              <Text style={styles.voiceHintPlus}>✨ Plus offers AI grammar cleanup & emotional reflection</Text>
             )}
           </>
         )}
 
         {isRecording && (
-          <Text style={styles.voiceStatus}>
-            Recording: {recordingDuration}
-          </Text>
+          <View>
+            <Text style={styles.voiceStatus}>
+              🎤 Listening... Speak now
+            </Text>
+            {voicePartialText ? (
+              <Text style={styles.voicePartialText}>
+                "{voicePartialText}"
+              </Text>
+            ) : null}
+          </View>
         )}
 
         {/* Divider */}
@@ -1155,7 +1188,16 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.brandPrimary,
     textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  voicePartialText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.md,
+    color: colors.fontSecondary,
+    textAlign: 'center',
     marginBottom: spacing.base,
+    fontStyle: 'italic',
+    paddingHorizontal: spacing.lg,
   },
   
   // Journal Entry Section Styles

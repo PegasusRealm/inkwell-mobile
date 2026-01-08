@@ -8,9 +8,10 @@ import {
   TouchableOpacity,
   Modal,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import auth from '@react-native-firebase/auth';
+import firestore from '@react-native-firebase/firestore';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import PastEntryCard from '../components/PastEntryCard';
@@ -48,6 +49,7 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   const [searching, setSearching] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [showingSearchResults, setShowingSearchResults] = useState(false);
+  const [loadingEntries, setLoadingEntries] = useState(false);
 
   const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -58,30 +60,45 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
 
   const loadEntryDates = async () => {
     try {
-      const entriesJson = await AsyncStorage.getItem('journal_entries');
-      if (!entriesJson) {
+      const user = auth().currentUser;
+      if (!user) {
         setEntryDates(new Set());
         setReplyDates(new Set());
         return;
       }
 
-      const entries = JSON.parse(entriesJson);
+      // Calculate start and end of displayed month
+      const startOfMonth = new Date(displayedYear, displayedMonth, 1);
+      const endOfMonth = new Date(displayedYear, displayedMonth + 1, 0, 23, 59, 59, 999);
+
+      // Query Firestore for entries in this month
+      const snapshot = await firestore()
+        .collection('journalEntries')
+        .where('userId', '==', user.uid)
+        .where('createdAt', '>=', startOfMonth)
+        .where('createdAt', '<=', endOfMonth)
+        .get();
+
       const datesWithEntries = new Set<string>();
       const datesWithReplies = new Set<string>();
 
-      entries.forEach((entry: any) => {
-        if (entry.date) {
-          const entryDate = new Date(entry.date);
-          if (
-            entryDate.getMonth() === displayedMonth &&
-            entryDate.getFullYear() === displayedYear
-          ) {
-            const dateKey = entryDate.getDate().toString();
-            datesWithEntries.add(dateKey);
-            
-            if (entry.newCoachReply === true) {
-              datesWithReplies.add(dateKey);
-            }
+      snapshot.docs.forEach((doc) => {
+        const entry = doc.data();
+        let entryDate: Date | null = null;
+        
+        // Handle different date formats
+        if (entry.createdAt?.toDate) {
+          entryDate = entry.createdAt.toDate();
+        } else if (entry.date) {
+          entryDate = new Date(entry.date);
+        }
+
+        if (entryDate) {
+          const dateKey = entryDate.getDate().toString();
+          datesWithEntries.add(dateKey);
+          
+          if (entry.newCoachReply === true) {
+            datesWithReplies.add(dateKey);
           }
         }
       });
@@ -146,36 +163,45 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
 
   const handleDateClick = async (day: number) => {
     console.log('Date clicked:', displayedYear, displayedMonth, day);
+    setSelectedDate(`${displayedMonth + 1}/${day}/${displayedYear}`);
+    setLoadingEntries(true);
+    setShowingSearchResults(false);
     
     try {
-      const entriesJson = await AsyncStorage.getItem('journal_entries');
-      if (!entriesJson) {
+      const user = auth().currentUser;
+      if (!user) {
         setSelectedDateEntries([]);
-        setSelectedDate(`${displayedMonth + 1}/${day}/${displayedYear}`);
         return;
       }
 
-      const entries = JSON.parse(entriesJson);
-      const matchingEntries = entries.filter((entry: any) => {
-        if (!entry.date) return false;
-        const entryDate = new Date(entry.date);
-        console.log('Checking entry:', entry.date, 'Day:', entryDate.getDate(), 'Month:', entryDate.getMonth(), 'Year:', entryDate.getFullYear());
-        console.log('Looking for Day:', day, 'Month:', displayedMonth, 'Year:', displayedYear);
-        return (
-          entryDate.getDate() === day &&
-          entryDate.getMonth() === displayedMonth &&
-          entryDate.getFullYear() === displayedYear
-        );
-      });
+      // Calculate start and end of the selected day
+      const startOfDay = new Date(displayedYear, displayedMonth, day, 0, 0, 0, 0);
+      const endOfDay = new Date(displayedYear, displayedMonth, day, 23, 59, 59, 999);
 
-      console.log('Total entries loaded:', entries.length);
-      console.log('Matching entries:', matchingEntries);
+      console.log('Querying for entries between:', startOfDay, 'and', endOfDay);
+
+      // Query Firestore for entries on this specific day
+      const snapshot = await firestore()
+        .collection('journalEntries')
+        .where('userId', '==', user.uid)
+        .where('createdAt', '>=', startOfDay)
+        .where('createdAt', '<=', endOfDay)
+        .orderBy('createdAt', 'desc')
+        .get();
+
+      const matchingEntries = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        date: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().date,
+      }));
+
+      console.log('Found entries:', matchingEntries.length);
       setSelectedDateEntries(matchingEntries);
-      setSelectedDate(`${displayedMonth + 1}/${day}/${displayedYear}`);
-      console.log(`Found ${matchingEntries.length} entries for ${day}/${displayedMonth + 1}/${displayedYear}`);
     } catch (error) {
       console.error('Error loading entries for date:', error);
       setSelectedDateEntries([]);
+    } finally {
+      setLoadingEntries(false);
     }
   };
 
@@ -192,17 +218,14 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
     if (!editingEntry || !editText.trim()) return;
 
     try {
-      const entriesJson = await AsyncStorage.getItem('journal_entries');
-      if (!entriesJson) return;
-
-      const entries = JSON.parse(entriesJson);
-      const updatedEntries = entries.map((entry: any) =>
-        entry.id === editingEntry.id
-          ? {...entry, text: editText.trim(), updatedAt: new Date().toISOString()}
-          : entry
-      );
-
-      await AsyncStorage.setItem('journal_entries', JSON.stringify(updatedEntries));
+      // Update in Firestore
+      await firestore()
+        .collection('journalEntries')
+        .doc(editingEntry.id)
+        .update({
+          text: editText.trim(),
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+        });
       
       // Update local state
       setSelectedDateEntries(prev =>
@@ -223,13 +246,11 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
 
   const handleDelete = async (entryId: string) => {
     try {
-      const entriesJson = await AsyncStorage.getItem('journal_entries');
-      if (!entriesJson) return;
-
-      const entries = JSON.parse(entriesJson);
-      const updatedEntries = entries.filter((entry: any) => entry.id !== entryId);
-
-      await AsyncStorage.setItem('journal_entries', JSON.stringify(updatedEntries));
+      // Delete from Firestore
+      await firestore()
+        .collection('journalEntries')
+        .doc(entryId)
+        .delete();
       
       // Update local state
       setSelectedDateEntries(prev => prev.filter(entry => entry.id !== entryId));
@@ -246,15 +267,13 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
 
   const handleMarkAsRead = async (entryId: string) => {
     try {
-      const entriesJson = await AsyncStorage.getItem('journal_entries');
-      if (!entriesJson) return;
-
-      const entries = JSON.parse(entriesJson);
-      const updatedEntries = entries.map((entry: any) =>
-        entry.id === entryId ? {...entry, newCoachReply: false} : entry
-      );
-
-      await AsyncStorage.setItem('journal_entries', JSON.stringify(updatedEntries));
+      // Update in Firestore
+      await firestore()
+        .collection('journalEntries')
+        .doc(entryId)
+        .update({
+          newCoachReply: false,
+        });
       
       // Update local state
       setSelectedDateEntries(prev =>
@@ -323,20 +342,29 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         return;
       }
 
-      // Load full entry data from AsyncStorage
-      const stored = await AsyncStorage.getItem('journal_entries');
-      if (stored) {
-        const allEntries = JSON.parse(stored);
-        const fullResults = results
-          .map((result: any) => {
-            const fullEntry = allEntries.find((e: any) => e.id === result.id);
-            return fullEntry;
-          })
-          .filter(Boolean);
-
-        setSearchResults(fullResults);
-        setSelectedDateEntries(fullResults);
+      // Load full entry data from Firestore using the IDs returned by semantic search
+      const entryIds = results.map((r: any) => r.id);
+      const fullResults: any[] = [];
+      
+      // Firestore 'in' queries support up to 10 items at a time
+      for (let i = 0; i < entryIds.length; i += 10) {
+        const batch = entryIds.slice(i, i + 10);
+        const snapshot = await firestore()
+          .collection('journalEntries')
+          .where(firestore.FieldPath.documentId(), 'in', batch)
+          .get();
+        
+        snapshot.docs.forEach(doc => {
+          fullResults.push({
+            id: doc.id,
+            ...doc.data(),
+            date: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().date,
+          });
+        });
       }
+
+      setSearchResults(fullResults);
+      setSelectedDateEntries(fullResults);
     } catch (error) {
       console.error('Smart Search error:', error);
       Alert.alert(
@@ -484,12 +512,19 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
             📅 Entries for {selectedDate}
           </Text>
         ) : null}
-        {selectedDate && (
+        {selectedDate && !loadingEntries && (
           <Text style={{fontSize: 12, color: '#666', marginBottom: 8, textAlign: 'center'}}>
             {selectedDateEntries.length} entry(ies) loaded
           </Text>
         )}
-        {selectedDateEntries.length === 0 ? (
+        {loadingEntries ? (
+          <View style={styles.placeholderContainer}>
+            <ActivityIndicator size="large" color={colors.primary} />
+            <Text style={[styles.placeholderText, {marginTop: spacing.md}]}>
+              Loading entries...
+            </Text>
+          </View>
+        ) : selectedDateEntries.length === 0 ? (
           <View style={styles.placeholderContainer}>
             <Text style={styles.placeholderText}>
               {selectedDate
