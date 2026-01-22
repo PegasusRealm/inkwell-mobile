@@ -6,16 +6,9 @@
 
 | Product ID | Price | Trial | Tier |
 |------------|-------|-------|------|
-| `com.inkwell.plus.monthly` | $14.99/mo | 7 days | Plus |
-| `com.inkwell.plus.annual` | $149.99/yr | 7 days | Plus |
-| `com.inkwell.connect.monthly` | $49.99/mo | **None** | Connect |
-
-### Consumables (Extra Practitioner Messages)
-
-| Product ID | Price | Credits |
-|------------|-------|---------|
-| `com.inkwell.connect.extra_message` | $12.99 | 1 message |
-| `com.inkwell.connect.extra_message_3pack` | $29.99 | 3 messages |
+| `com.inkwell.plus.monthly` | $6.99/mo | 7 days | Plus |
+| `com.inkwell.plus.annual` | $69.99/yr | 7 days | Plus |
+| `com.inkwell.connect.monthly` | $29.99/mo | **None** | Connect |
 
 ### RevenueCat Offerings
 
@@ -53,7 +46,7 @@
 - Reference Name: `InkWell Plus Monthly`
 - Product ID: `com.inkwell.plus.monthly`
 - Subscription Duration: 1 month
-- Price: $14.99 USD
+- Price: $6.99 USD
 - Subscription Group: Create "InkWell" (if not exists)
 - Introductory Offer: 7 days free trial
 
@@ -68,7 +61,7 @@ Unlock unlimited AI-powered journaling with intelligent prompts, daily SMS remin
 - Reference Name: `InkWell Plus Annual`
 - Product ID: `com.inkwell.plus.annual`
 - Subscription Duration: 1 year
-- Price: $149.99 USD (Save $30 vs monthly)
+- Price: $69.99 USD (Save $14 vs monthly)
 - Subscription Group: "InkWell"
 - Introductory Offer: 7 days free trial
 
@@ -83,7 +76,7 @@ Get 12 months of InkWell Plus at a discounted rate. Includes unlimited AI prompt
 - Reference Name: `InkWell Connect Monthly`
 - Product ID: `com.inkwell.connect.monthly`
 - Subscription Duration: 1 month
-- Price: $49.99 USD
+- Price: $29.99 USD
 - Subscription Group: "InkWell"
 - Introductory Offer: 7 days free trial
 
@@ -111,19 +104,19 @@ Premium tier with everything in Plus, plus direct access to certified mental wel
 
 **InkWell Plus (Monthly)**
 - Product ID: `com.inkwell.plus.monthly`
-- Price: $14.99
+- Price: $6.99
 - Billing period: Monthly
 - Free trial: 7 days
 
 **InkWell Plus (Annual)**
 - Product ID: `com.inkwell.plus.annual`
-- Price: $149.99
+- Price: $69.99
 - Billing period: Yearly
 - Free trial: 7 days
 
 **InkWell Connect (Monthly)**
 - Product ID: `com.inkwell.connect.monthly`
-- Price: $49.99
+- Price: $29.99
 - Billing period: Monthly
 - Free trial: 7 days
 
@@ -228,7 +221,7 @@ npx react-native run-android
 - 20% AI prompts
 - No SMS
 
-**Plus Tier ($14.99/mo or $149.99/yr):**
+**Plus Tier ($6.99/mo or $69.99/yr):**
 - Everything in Free
 - 100% AI prompts
 - SMS daily reminders
@@ -236,10 +229,9 @@ npx react-native run-android
 - Weekly/monthly insights
 - 7-day free trial
 
-**Connect Tier ($49.99/mo):**
+**Connect Tier ($29.99/mo):**
 - Everything in Plus
 - 1 practitioner message per week (included)
-- Up to 3 extra messages available ($12.99 each or 3 for $29.99)
 - Priority support
 - NO free trial (human support cost)
 
@@ -350,9 +342,9 @@ npx react-native run-android
 - Entitlements: `plus`, `connect`
 
 **App Store Connect Products:**
-- `com.inkwell.plus.monthly` - $14.99/mo (7-day trial)
-- `com.inkwell.plus.annual` - $149.99/yr (7-day trial) 
-- `com.inkwell.connect.monthly` - $49.99/mo (no trial)
+- `com.inkwell.plus.monthly` - $6.99/mo (7-day trial)
+- `com.inkwell.plus.annual` - $69.99/yr (7-day trial) 
+- `com.inkwell.connect.monthly` - $29.99/mo (no trial)
 
 ### 🚨 **NEXT PRIORITY TASKS**
 

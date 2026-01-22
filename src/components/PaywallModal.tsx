@@ -331,10 +331,6 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
                   <Text style={styles.pricePeriod}>/month</Text>
                 </View>
               </View>
-
-              <Text style={styles.extraMessageNote}>
-                Need more? Extra messages available: $12.99 each or 3 for $29.99
-              </Text>
             </TouchableOpacity>
           )}
 
@@ -632,14 +628,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.tierConnect,
     backgroundColor: colors.tierConnect + '10',
-  },
-  extraMessageNote: {
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-    textAlign: 'center',
-    marginTop: spacing.sm,
-    fontStyle: 'italic',
   },
   
   // CTA

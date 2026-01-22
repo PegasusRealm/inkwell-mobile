@@ -12,6 +12,7 @@ import {
   Switch,
   Share,
   Platform,
+  Linking,
 } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {Picker} from '@react-native-picker/picker';
@@ -23,6 +24,7 @@ import type {ThemeMode} from '../theme';
 import type {RootStackScreenProps} from '../navigation/types';
 import {useSubscription} from '../hooks/useSubscription';
 import PaywallModal from '../components/PaywallModal';
+import notificationService, {PushNotificationPreferences} from '../services/notificationService';
 
 export default function SettingsScreen({
   navigation,
@@ -61,6 +63,16 @@ export default function SettingsScreen({
   const [savingSms, setSavingSms] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState('America/New_York');
   
+  // Push Notifications state
+  const [pushPermissionStatus, setPushPermissionStatus] = useState<'authorized' | 'denied' | 'not_determined'>('not_determined');
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushDailyPrompts, setPushDailyPrompts] = useState(true);
+  const [pushGratitudePrompts, setPushGratitudePrompts] = useState(true);
+  const [pushWishMilestones, setPushWishMilestones] = useState(true);
+  const [pushCoachReplies, setPushCoachReplies] = useState(true);
+  const [pushWeeklyInsights, setPushWeeklyInsights] = useState(false);
+  const [savingPush, setSavingPush] = useState(false);
+  
   // Export state
   const [exporting, setExporting] = useState(false);
   
@@ -93,6 +105,7 @@ export default function SettingsScreen({
     loadApprovedPractitioners();
     loadInsightsPreferences();
     loadSmsPreferences();
+    loadPushPreferences();
   }, []);
 
   const loadPractitioners = async () => {
@@ -255,6 +268,93 @@ export default function SettingsScreen({
       Alert.alert('Error', 'Failed to save SMS preferences. Please try again.');
     } finally {
       setSavingSms(false);
+    }
+  };
+
+  // Push Notification Functions
+  const loadPushPreferences = async () => {
+    if (!user) return;
+
+    try {
+      // Check permission status
+      const status = await notificationService.checkPermissionStatus();
+      setPushPermissionStatus(status);
+
+      // Load saved preferences
+      const prefs = await notificationService.loadPreferences(user.uid);
+      setPushEnabled(prefs.enabled && status === 'authorized');
+      setPushDailyPrompts(prefs.dailyPrompts);
+      setPushGratitudePrompts(prefs.gratitudePrompts);
+      setPushWishMilestones(prefs.wishMilestones);
+      setPushCoachReplies(prefs.coachReplies);
+      setPushWeeklyInsights(prefs.weeklyInsights);
+    } catch (error) {
+      console.error('Error loading push preferences:', error);
+    }
+  };
+
+  const handlePushToggle = async (value: boolean) => {
+    if (!user) return;
+
+    if (value) {
+      // Trying to enable - check permission status
+      if (pushPermissionStatus === 'denied') {
+        Alert.alert(
+          'Notifications Disabled',
+          'Push notifications are disabled in your device settings. Would you like to open Settings to enable them?',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Open Settings', onPress: () => notificationService.openSettings() },
+          ]
+        );
+        return;
+      }
+
+      // Request permission
+      const granted = await notificationService.requestPermissionAndEnable(user.uid);
+      if (granted) {
+        setPushEnabled(true);
+        setPushPermissionStatus('authorized');
+        await savePushPreferences(true);
+      } else {
+        setPushPermissionStatus('denied');
+        Alert.alert(
+          'Permission Required',
+          'Please enable notifications in your device settings to receive push notifications.'
+        );
+      }
+    } else {
+      // Disabling
+      setPushEnabled(false);
+      await savePushPreferences(false);
+    }
+  };
+
+  const savePushPreferences = async (enabled?: boolean) => {
+    if (!user) return;
+
+    setSavingPush(true);
+    try {
+      const prefs: PushNotificationPreferences = {
+        enabled: enabled ?? pushEnabled,
+        dailyPrompts: pushDailyPrompts,
+        gratitudePrompts: pushGratitudePrompts,
+        wishMilestones: pushWishMilestones,
+        coachReplies: pushCoachReplies,
+        weeklyInsights: pushWeeklyInsights,
+      };
+
+      const success = await notificationService.savePreferences(user.uid, prefs);
+      if (success) {
+        Alert.alert('Success', 'Push notification preferences updated');
+      } else {
+        Alert.alert('Error', 'Failed to save preferences. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error saving push preferences:', error);
+      Alert.alert('Error', 'Failed to save preferences. Please try again.');
+    } finally {
+      setSavingPush(false);
     }
   };
 
@@ -937,144 +1037,268 @@ export default function SettingsScreen({
 
       {/* Notifications Section */}
       <View style={styles.section}>
-        <View style={styles.sectionTitleRow}>
-          <Text style={styles.sectionTitle}>🔔 Notifications</Text>
-          {!isPremium && (
-            <View style={[styles.tierBadge, styles.plusBadge]}>
-              <Text style={styles.tierBadgeText}>Plus</Text>
+        <Text style={styles.sectionTitle}>🔔 Notifications</Text>
+        
+        {/* Push Notifications Subsection - Free for all users */}
+        <View style={styles.card}>
+          <Text style={styles.subsectionTitle}>📱 Push Notifications</Text>
+          <Text style={styles.insightsDescription}>
+            Receive native phone notifications for prompts and reminders.
+          </Text>
+          
+          <View style={styles.switchRow}>
+            <View style={styles.switchLabel}>
+              <Text style={styles.switchTitle}>Enable Push Notifications</Text>
+              {pushPermissionStatus === 'denied' && (
+                <Text style={styles.permissionWarning}>
+                  Notifications disabled in device settings
+                </Text>
+              )}
             </View>
+            <Switch
+              value={pushEnabled}
+              onValueChange={handlePushToggle}
+              trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+              thumbColor={pushEnabled ? '#2A6972' : '#999'}
+            />
+          </View>
+          
+          {pushEnabled && (
+            <View style={styles.smsPreferences}>
+              <Text style={styles.smsPreferencesTitle}>Notification Types:</Text>
+              
+              {/* Daily journal prompts - Free for all users */}
+              <View style={styles.switchRowSmall}>
+                <Text style={styles.switchTitleSmall}>✍️ Daily journal prompts</Text>
+                <Switch
+                  value={pushDailyPrompts}
+                  onValueChange={setPushDailyPrompts}
+                  trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                  thumbColor={pushDailyPrompts ? '#2A6972' : '#999'}
+                />
+              </View>
+              
+              {/* Plus-only notification types */}
+              {isPremium ? (
+                <>
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>🌱 WISH milestone reminders</Text>
+                    <Switch
+                      value={pushWishMilestones}
+                      onValueChange={setPushWishMilestones}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={pushWishMilestones ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>🙏 Daily gratitude from Sophy</Text>
+                    <Switch
+                      value={pushGratitudePrompts}
+                      onValueChange={setPushGratitudePrompts}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={pushGratitudePrompts ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>💬 Coach replies</Text>
+                    <Switch
+                      value={pushCoachReplies}
+                      onValueChange={setPushCoachReplies}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={pushCoachReplies ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>📊 Weekly insights</Text>
+                    <Switch
+                      value={pushWeeklyInsights}
+                      onValueChange={setPushWeeklyInsights}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={pushWeeklyInsights ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                </>
+              ) : (
+                <View style={styles.plusNotificationTypes}>
+                  <Text style={styles.lockedNotificationText}>
+                    🔒 Upgrade to Plus for additional notifications:
+                  </Text>
+                  <Text style={styles.lockedNotificationItem}>• 🌱 WISH milestone reminders</Text>
+                  <Text style={styles.lockedNotificationItem}>• 🙏 Daily gratitude from Sophy</Text>
+                  <Text style={styles.lockedNotificationItem}>• 💬 Coach replies</Text>
+                  <Text style={styles.lockedNotificationItem}>• 📊 Weekly insights</Text>
+                  <TouchableOpacity
+                    style={styles.upgradePromptButton}
+                    onPress={handleUpgradePress}>
+                    <Text style={styles.upgradePromptButtonText}>Upgrade to Plus</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+              
+              <TouchableOpacity
+                style={[styles.saveButton, savingPush && styles.saveButtonDisabled]}
+                onPress={() => savePushPreferences()}
+                disabled={savingPush}>
+                <Text style={styles.saveButtonText}>
+                  {savingPush ? 'Saving...' : 'Save Push Preferences'}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          )}
+          
+          {pushPermissionStatus === 'denied' && (
+            <TouchableOpacity
+              style={styles.openSettingsButton}
+              onPress={() => notificationService.openSettings()}>
+              <Text style={styles.openSettingsButtonText}>Open Device Settings</Text>
+            </TouchableOpacity>
           )}
         </View>
         
-        {!isPremium ? (
-          <View style={styles.card}>
-            <Text style={styles.lockedDescription}>
-              🔒 Upgrade to Plus to receive daily prompts, gratitude messages, and milestone celebrations delivered right to your phone.
-            </Text>
-            <TouchableOpacity
-              style={styles.upgradePromptButton}
-              onPress={() => checkFeatureAndShowPaywall('sms')}>
-              <Text style={styles.upgradePromptButtonText}>Upgrade to Plus</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.card}>
-            <Text style={styles.insightsDescription}>
-              Stay connected with wellness reminders and insights from InkWell via text message.
-            </Text>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Phone Number</Text>
-              <TextInput
-                style={styles.smsInput}
-                placeholder="+1 555 123 4567"
-                placeholderTextColor="#999"
-                value={phoneNumber}
-                onChangeText={setPhoneNumber}
-                keyboardType="phone-pad"
-                autoCapitalize="none"
-              />
-              <Text style={styles.inputHint}>Format: +15551234567 (include country code)</Text>
-            </View>
-            
-            <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Timezone</Text>
-              <Picker
-                selectedValue={selectedTimezone}
-                onValueChange={(value) => setSelectedTimezone(value)}
-                style={styles.picker}
-                itemStyle={styles.pickerItem}>
-                <Picker.Item label="Hawaii (Pacific/Honolulu)" value="Pacific/Honolulu" />
-                <Picker.Item label="Alaska (America/Anchorage)" value="America/Anchorage" />
-                <Picker.Item label="Pacific Time (America/Los_Angeles)" value="America/Los_Angeles" />
-                <Picker.Item label="Mountain Time (America/Denver)" value="America/Denver" />
-                <Picker.Item label="Arizona (America/Phoenix)" value="America/Phoenix" />
-                <Picker.Item label="Central Time (America/Chicago)" value="America/Chicago" />
-                <Picker.Item label="Eastern Time (America/New_York)" value="America/New_York" />
-                <Picker.Item label="London (Europe/London)" value="Europe/London" />
-                <Picker.Item label="Paris (Europe/Paris)" value="Europe/Paris" />
-                <Picker.Item label="Sydney (Australia/Sydney)" value="Australia/Sydney" />
-              </Picker>
-            </View>
-            
-            <View style={styles.switchRow}>
-              <View style={styles.switchLabel}>
-                <Text style={styles.switchTitle}>Enable SMS Notifications</Text>
-              </View>
-              <Switch
-                value={smsEnabled}
-                onValueChange={setSmsEnabled}
-                trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                thumbColor={smsEnabled ? '#2A6972' : '#999'}
-              />
-            </View>
-            
-            {smsEnabled && (
-              <View style={styles.smsPreferences}>
-                <Text style={styles.smsPreferencesTitle}>Notification Types:</Text>
-                
-                <View style={styles.switchRowSmall}>
-                  <Text style={styles.switchTitleSmall}>🌱 WISH milestone reminders</Text>
-                  <Switch
-                    value={smsWishMilestones}
-                    onValueChange={setSmsWishMilestones}
-                    trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                    thumbColor={smsWishMilestones ? '#2A6972' : '#999'}
-                  />
-                </View>
-                
-                <View style={styles.switchRowSmall}>
-                  <Text style={styles.switchTitleSmall}>✍️ Daily journal prompts</Text>
-                  <Switch
-                    value={smsDailyPrompts}
-                    onValueChange={setSmsDailyPrompts}
-                    trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                    thumbColor={smsDailyPrompts ? '#2A6972' : '#999'}
-                  />
-                </View>
-                
-                <View style={styles.switchRowSmall}>
-                  <Text style={styles.switchTitleSmall}>🙏 Daily gratitude from Sophy</Text>
-                  <Switch
-                    value={smsGratitudePrompts}
-                    onValueChange={setSmsGratitudePrompts}
-                    trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                    thumbColor={smsGratitudePrompts ? '#2A6972' : '#999'}
-                  />
-                </View>
-                
-                <View style={styles.switchRowSmall}>
-                  <Text style={styles.switchTitleSmall}>💬 Coach replies</Text>
-                  <Switch
-                    value={smsCoachReplies}
-                    onValueChange={setSmsCoachReplies}
-                    trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                    thumbColor={smsCoachReplies ? '#2A6972' : '#999'}
-                  />
-                </View>
-                
-                <View style={styles.switchRowSmall}>
-                  <Text style={styles.switchTitleSmall}>📊 Weekly insights</Text>
-                  <Switch
-                    value={smsWeeklyInsights}
-                    onValueChange={setSmsWeeklyInsights}
-                    trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                    thumbColor={smsWeeklyInsights ? '#2A6972' : '#999'}
-                  />
-                </View>
+        {/* SMS Notifications Subsection - Plus feature */}
+        <View style={[styles.card, {marginTop: spacing.md}]}>
+          <View style={styles.subsectionTitleRow}>
+            <Text style={styles.subsectionTitle}>💬 SMS Notifications</Text>
+            {!isPremium && (
+              <View style={[styles.tierBadge, styles.plusBadge]}>
+                <Text style={styles.tierBadgeText}>Plus</Text>
               </View>
             )}
-            
-            <TouchableOpacity
-              style={[styles.saveButton, savingSms && styles.saveButtonDisabled]}
-              onPress={saveSmsPreferences}
-              disabled={savingSms}>
-              <Text style={styles.saveButtonText}>
-                {savingSms ? 'Saving...' : 'Save SMS Preferences'}
-              </Text>
-            </TouchableOpacity>
           </View>
-        )}
+          
+          {!isPremium ? (
+            <>
+              <Text style={styles.lockedDescription}>
+                🔒 Upgrade to Plus to receive daily prompts, gratitude messages, and milestone celebrations via text message.
+              </Text>
+              <TouchableOpacity
+                style={styles.upgradePromptButton}
+                onPress={() => checkFeatureAndShowPaywall('sms')}>
+                <Text style={styles.upgradePromptButtonText}>Upgrade to Plus</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <Text style={styles.insightsDescription}>
+                Receive wellness reminders and insights from InkWell via text message.
+              </Text>
+              
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Phone Number</Text>
+                <TextInput
+                  style={styles.smsInput}
+                  placeholder="+1 555 123 4567"
+                  placeholderTextColor="#999"
+                  value={phoneNumber}
+                  onChangeText={setPhoneNumber}
+                  keyboardType="phone-pad"
+                  autoCapitalize="none"
+                />
+                <Text style={styles.inputHint}>Format: +15551234567 (include country code)</Text>
+              </View>
+              
+              <View style={styles.inputGroup}>
+                <Text style={styles.inputLabel}>Timezone</Text>
+                <Picker
+                  selectedValue={selectedTimezone}
+                  onValueChange={(value) => setSelectedTimezone(value)}
+                  style={styles.picker}
+                  itemStyle={styles.pickerItem}>
+                  <Picker.Item label="Hawaii (Pacific/Honolulu)" value="Pacific/Honolulu" />
+                  <Picker.Item label="Alaska (America/Anchorage)" value="America/Anchorage" />
+                  <Picker.Item label="Pacific Time (America/Los_Angeles)" value="America/Los_Angeles" />
+                  <Picker.Item label="Mountain Time (America/Denver)" value="America/Denver" />
+                  <Picker.Item label="Arizona (America/Phoenix)" value="America/Phoenix" />
+                  <Picker.Item label="Central Time (America/Chicago)" value="America/Chicago" />
+                  <Picker.Item label="Eastern Time (America/New_York)" value="America/New_York" />
+                  <Picker.Item label="London (Europe/London)" value="Europe/London" />
+                  <Picker.Item label="Paris (Europe/Paris)" value="Europe/Paris" />
+                  <Picker.Item label="Sydney (Australia/Sydney)" value="Australia/Sydney" />
+                </Picker>
+              </View>
+              
+              <View style={styles.switchRow}>
+                <View style={styles.switchLabel}>
+                  <Text style={styles.switchTitle}>Enable SMS Notifications</Text>
+                </View>
+                <Switch
+                  value={smsEnabled}
+                  onValueChange={setSmsEnabled}
+                  trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                  thumbColor={smsEnabled ? '#2A6972' : '#999'}
+                />
+              </View>
+              
+              {smsEnabled && (
+                <View style={styles.smsPreferences}>
+                  <Text style={styles.smsPreferencesTitle}>Notification Types:</Text>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>🌱 WISH milestone reminders</Text>
+                    <Switch
+                      value={smsWishMilestones}
+                      onValueChange={setSmsWishMilestones}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={smsWishMilestones ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>✍️ Daily journal prompts</Text>
+                    <Switch
+                      value={smsDailyPrompts}
+                      onValueChange={setSmsDailyPrompts}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={smsDailyPrompts ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>🙏 Daily gratitude from Sophy</Text>
+                    <Switch
+                      value={smsGratitudePrompts}
+                      onValueChange={setSmsGratitudePrompts}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={smsGratitudePrompts ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>💬 Coach replies</Text>
+                    <Switch
+                      value={smsCoachReplies}
+                      onValueChange={setSmsCoachReplies}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={smsCoachReplies ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                  
+                  <View style={styles.switchRowSmall}>
+                    <Text style={styles.switchTitleSmall}>📊 Weekly insights</Text>
+                    <Switch
+                      value={smsWeeklyInsights}
+                      onValueChange={setSmsWeeklyInsights}
+                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
+                      thumbColor={smsWeeklyInsights ? '#2A6972' : '#999'}
+                    />
+                  </View>
+                </View>
+              )}
+              
+              <TouchableOpacity
+                style={[styles.saveButton, savingSms && styles.saveButtonDisabled]}
+                onPress={saveSmsPreferences}
+                disabled={savingSms}>
+                <Text style={styles.saveButtonText}>
+                  {savingSms ? 'Saving...' : 'Save SMS Preferences'}
+                </Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
       </View>
 
       {/* Export Data Section */}
@@ -1958,5 +2182,59 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginTop: spacing.sm,
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  // Plus notification types locked state
+  plusNotificationTypes: {
+    marginTop: spacing.md,
+    paddingTop: spacing.md,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  lockedNotificationText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+    marginBottom: spacing.sm,
+  },
+  lockedNotificationItem: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMuted,
+    marginLeft: spacing.sm,
+    marginBottom: 4,
+  },
+  // Push Notification Styles
+  subsectionTitle: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.lg,
+    color: colors.fontMain,
+    marginBottom: spacing.sm,
+  },
+  subsectionTitleRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.sm,
+  },
+  permissionWarning: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: '#F59E0B',
+    marginTop: 2,
+  },
+  openSettingsButton: {
+    backgroundColor: colors.bgMuted,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignItems: 'center',
+    marginTop: spacing.md,
+  },
+  openSettingsButtonText: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.sm,
+    color: colors.brandPrimary,
   },
 });

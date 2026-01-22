@@ -92,7 +92,6 @@
 
 ### User Insights
 - [ ] Journaling streak tracking
-- [ ] Word count trends
 - [ ] Mood tracking over time
 - [ ] Most used prompts
 

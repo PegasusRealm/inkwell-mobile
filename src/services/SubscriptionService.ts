@@ -27,12 +27,6 @@ export const OFFERING_IDS = {
   CONNECT: 'connect',
 } as const;
 
-// Product identifiers for consumables
-export const PRODUCT_IDS = {
-  EXTRA_MESSAGE: 'com.inkwell.connect.extra_message',
-  EXTRA_MESSAGE_3PACK: 'com.inkwell.connect.extra_message_3pack',
-} as const;
-
 export type SubscriptionTier = 'free' | 'plus' | 'connect';
 
 export interface SubscriptionStatus {
@@ -136,69 +130,6 @@ class SubscriptionService {
   }
 
   /**
-   * Get consumable products (extra messages)
-   */
-  async getExtraMessageProducts(): Promise<PurchasesStoreProduct[]> {
-    try {
-      const products = await Purchases.getProducts([
-        PRODUCT_IDS.EXTRA_MESSAGE,
-        PRODUCT_IDS.EXTRA_MESSAGE_3PACK,
-      ]);
-      
-      console.log('📦 Extra message products:', products.length);
-      return products;
-      
-    } catch (error) {
-      console.error('❌ Failed to get extra message products:', error);
-      return [];
-    }
-  }
-
-  /**
-   * Purchase a consumable product (extra message)
-   */
-  async purchaseConsumable(productId: string): Promise<CustomerInfo> {
-    try {
-      console.log('💳 Purchasing consumable:', productId);
-      
-      const products = await Purchases.getProducts([productId]);
-      if (products.length === 0) {
-        throw new Error('Product not found');
-      }
-      
-      const { customerInfo } = await Purchases.purchaseStoreProduct(products[0]);
-      
-      console.log('✅ Consumable purchase successful!');
-      
-      // Track the purchase in Firestore (for message credits)
-      await this.trackConsumablePurchase(productId);
-      
-      return customerInfo;
-      
-    } catch (error: any) {
-      console.error('❌ Consumable purchase failed:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Track consumable purchase and add credits
-   */
-  private async trackConsumablePurchase(productId: string): Promise<void> {
-    const userId = auth().currentUser?.uid;
-    if (!userId) return;
-
-    const credits = productId === PRODUCT_IDS.EXTRA_MESSAGE_3PACK ? 3 : 1;
-    
-    await firestore().collection('users').doc(userId).update({
-      extraMessageCredits: firestore.FieldValue.increment(credits),
-      lastExtraPurchase: firestore.FieldValue.serverTimestamp(),
-    });
-    
-    console.log(`✅ Added ${credits} extra message credit(s)`);
-  }
-
-  /**
    * Purchase a subscription package
    */
   async purchasePackage(pkg: PurchasesPackage): Promise<CustomerInfo> {
@@ -252,11 +183,73 @@ class SubscriptionService {
 
   /**
    * Get current subscription status
+   * IMPORTANT: Checks both RevenueCat AND Firestore for admin overrides/beta status
    */
   async getSubscriptionStatus(): Promise<SubscriptionStatus> {
     try {
+      const userId = auth().currentUser?.uid;
+      
+      // Get RevenueCat status
       const customerInfo = await Purchases.getCustomerInfo();
-      return this.parseSubscriptionStatus(customerInfo);
+      const rcStatus = this.parseSubscriptionStatus(customerInfo);
+      
+      // If RevenueCat says Plus or Connect, use that (actual paying customer)
+      if (rcStatus.tier !== 'free') {
+        return rcStatus;
+      }
+      
+      // RevenueCat says free - check Firestore for admin override or beta status
+      if (userId) {
+        try {
+          const userDoc = await firestore().collection('users').doc(userId).get();
+          const userData = userDoc.data();
+          
+          if (userData) {
+            const hasAdminOverride = userData.betaProgress?.tierOverride?.tier;
+            const specialCode = userData.special_code;
+            const isBetaTester = ['alpha', 'beta'].includes(specialCode);
+            const firestoreTier = userData.subscriptionTier;
+            
+            // Check for admin override tier
+            if (hasAdminOverride && ['plus', 'connect'].includes(hasAdminOverride)) {
+              console.log('🔓 Using admin override tier:', hasAdminOverride);
+              return {
+                tier: hasAdminOverride as SubscriptionTier,
+                isActive: true,
+                willRenew: false,
+                platform: 'stripe', // Admin override
+              };
+            }
+            
+            // Check for beta tester status
+            if (isBetaTester) {
+              console.log('🔓 Beta tester detected, granting Plus access');
+              return {
+                tier: 'plus',
+                isActive: true,
+                willRenew: false,
+                platform: 'stripe', // Beta access
+              };
+            }
+            
+            // Check Firestore subscriptionTier (may be set by web/admin)
+            if (firestoreTier && ['plus', 'connect'].includes(firestoreTier)) {
+              console.log('🔓 Using Firestore tier:', firestoreTier);
+              return {
+                tier: firestoreTier as SubscriptionTier,
+                isActive: userData.subscriptionStatus === 'active',
+                willRenew: userData.subscriptionWillRenew || false,
+                platform: userData.subscriptionPlatform || 'stripe',
+              };
+            }
+          }
+        } catch (firestoreError) {
+          console.warn('⚠️ Could not check Firestore for tier override:', firestoreError);
+        }
+      }
+      
+      // Default to RevenueCat status (free)
+      return rcStatus;
       
     } catch (error) {
       console.error('❌ Failed to get subscription status:', error);
@@ -309,6 +302,7 @@ class SubscriptionService {
   /**
    * Sync subscription status with Firestore
    * This keeps the backend in sync with IAP subscriptions
+   * IMPORTANT: Respects admin overrides (betaProgress.tierOverride)
    */
   async syncSubscriptionStatus(customerInfo?: CustomerInfo): Promise<void> {
     try {
@@ -318,7 +312,46 @@ class SubscriptionService {
         return;
       }
 
-      // Get customer info if not provided
+      // Check for admin override FIRST - don't overwrite if admin set a tier
+      const userDoc = await firestore().collection('users').doc(userId).get();
+      const userData = userDoc.data();
+      
+      const hasAdminOverride = userData?.betaProgress?.tierOverride?.tier;
+      const specialCode = userData?.special_code;
+      const isBetaTester = ['alpha', 'beta'].includes(specialCode);
+      
+      // If user has admin override or is a beta tester, preserve their tier
+      if (hasAdminOverride || isBetaTester) {
+        console.log('🔒 User has admin override or beta status, preserving tier:', 
+          hasAdminOverride || (isBetaTester ? 'plus (beta)' : 'free'));
+        
+        // Still update non-tier fields if there's an active IAP
+        const info = customerInfo || await Purchases.getCustomerInfo();
+        const status = this.parseSubscriptionStatus(info);
+        
+        // Only update tier if RevenueCat says they have a HIGHER tier (actual purchase)
+        const tierRank = { free: 0, plus: 1, connect: 2 };
+        const currentTier = userData?.subscriptionTier || 'free';
+        const overrideTier = hasAdminOverride || (isBetaTester ? 'plus' : 'free');
+        const rcTier = status.tier;
+        
+        // Use the highest tier available
+        const effectiveTier = [currentTier, overrideTier, rcTier].reduce((highest, t) => 
+          tierRank[t as SubscriptionTier] > tierRank[highest as SubscriptionTier] ? t : highest
+        );
+        
+        await firestore().collection('users').doc(userId).update({
+          subscriptionTier: effectiveTier,
+          subscriptionStatus: 'active', // Beta/override users are always active
+          subscriptionPlatform: status.tier !== 'free' ? (status.platform || 'unknown') : (userData?.subscriptionPlatform || 'admin'),
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+        });
+        
+        console.log('✅ Synced subscription (with override) to Firestore:', effectiveTier);
+        return;
+      }
+
+      // No admin override - use RevenueCat status directly
       const info = customerInfo || await Purchases.getCustomerInfo();
       const status = this.parseSubscriptionStatus(info);
       
