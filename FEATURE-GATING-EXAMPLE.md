@@ -61,13 +61,13 @@ const handleExport = async () => {
 };
 ```
 
-### Practitioner Connection
+### Coach Connection
 ```tsx
-const handlePractitionerContact = async () => {
+const handleCoachContact = async () => {
   const hasAccess = await checkFeatureAndShowPaywall('practitioner');
   if (!hasAccess) return;
   
-  // Continue with practitioner logic
+  // Continue with coach logic
 };
 ```
 

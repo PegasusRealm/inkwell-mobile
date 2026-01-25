@@ -39,16 +39,5 @@ target 'InkWellMobile' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
-    
-    # Fix: Remove test files from React-perflogger that require gtest (not available in release builds)
-    installer.pods_project.targets.each do |target|
-      if target.name == 'React-perflogger'
-        target.source_build_phase.files.to_a.each do |file|
-          if file.display_name.include?('Test')
-            file.remove_from_project
-          end
-        end
-      end
-    end
   end
 end

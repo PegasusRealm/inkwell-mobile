@@ -90,6 +90,15 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   const [saveReflectionChecked, setSaveReflectionChecked] = useState(false);
   const [generatingReflection, setGeneratingReflection] = useState(false);
 
+  // Emotional Insights state (from voice analysis)
+  const [emotionalInsights, setEmotionalInsights] = useState<{
+    primaryEmotion?: string;
+    confidence?: number;
+    energyLevel?: string;
+    stressLevel?: string;
+    sophyInsight?: string;
+  } | null>(null);
+
   // AI Usage tracking state
   const [aiCallsRemaining, setAiCallsRemaining] = useState<number>(AI_DAILY_LIMIT);
   
@@ -237,7 +246,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         .filter(doc => doc.exists)
         .map(doc => ({
           id: doc.id,
-          name: doc.data()?.displayName || doc.data()?.email || 'Practitioner',
+          name: doc.data()?.displayName || doc.data()?.email || 'Coach',
           email: doc.data()?.email || '',
         }));
 
@@ -373,15 +382,27 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
               prevText + (prevText ? ' ' : '') + transcriptionResult.cleanedText,
           );
           
-          Alert.alert(
-            '✨ Voice Processed!',
-            'Your voice has been transcribed with clean grammar and emotional insights.',
-          );
-          
-          // Show emotional insights if available
-          if (transcriptionResult.emotionalInsights?.sophyInsight) {
-            setSophyReflection(transcriptionResult.emotionalInsights.sophyInsight);
-            setSaveReflectionChecked(true);
+          // Store emotional insights for display
+          if (transcriptionResult.emotionalInsights) {
+            setEmotionalInsights(transcriptionResult.emotionalInsights);
+            
+            // Also set Sophy's reflection if available
+            if (transcriptionResult.emotionalInsights.sophyInsight) {
+              setSophyReflection(transcriptionResult.emotionalInsights.sophyInsight);
+              setSaveReflectionChecked(true);
+            }
+            
+            // Show alert with emotional analysis summary
+            const { primaryEmotion, energyLevel, stressLevel } = transcriptionResult.emotionalInsights;
+            Alert.alert(
+              '✨ Voice Analysis Complete',
+              `Tone: ${primaryEmotion || 'Detected'}\nEnergy: ${energyLevel || 'Analyzed'}\nStress: ${stressLevel || 'Assessed'}\n\nYour entry has been enhanced with AI grammar cleanup. Scroll down to see Sophy's emotional reflection.`,
+            );
+          } else {
+            Alert.alert(
+              '✨ Voice Processed!',
+              'Your voice has been transcribed with clean grammar.',
+            );
           }
         } catch (transcriptionError: any) {
           console.error('AI processing error:', transcriptionError);
@@ -674,6 +695,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       setJournalEntry('');
       setGeneratedPrompt('');
       setSophyReflection('');
+      setEmotionalInsights(null);
       setPromptTopic('');
       setSavePromptChecked(false);
       setSaveReflectionChecked(false);
@@ -778,6 +800,34 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
                 "{voicePartialText}"
               </Text>
             ) : null}
+          </View>
+        )}
+
+        {/* Emotional Insights Display (from voice analysis) */}
+        {emotionalInsights && (
+          <View style={styles.emotionalInsightsContainer}>
+            <Text style={styles.emotionalInsightsTitle}>🎭 Voice Emotional Analysis</Text>
+            <View style={styles.emotionalInsightsRow}>
+              <View style={styles.emotionalInsightsChip}>
+                <Text style={styles.emotionalInsightsLabel}>Tone</Text>
+                <Text style={styles.emotionalInsightsValue}>
+                  {emotionalInsights.primaryEmotion || 'Detected'} {emotionalInsights.confidence ? `(${emotionalInsights.confidence}%)` : ''}
+                </Text>
+              </View>
+              <View style={styles.emotionalInsightsChip}>
+                <Text style={styles.emotionalInsightsLabel}>Energy</Text>
+                <Text style={styles.emotionalInsightsValue}>{emotionalInsights.energyLevel || 'Normal'}</Text>
+              </View>
+              <View style={styles.emotionalInsightsChip}>
+                <Text style={styles.emotionalInsightsLabel}>Stress</Text>
+                <Text style={styles.emotionalInsightsValue}>{emotionalInsights.stressLevel || 'Normal'}</Text>
+              </View>
+            </View>
+            <TouchableOpacity 
+              style={styles.emotionalInsightsDismiss}
+              onPress={() => setEmotionalInsights(null)}>
+              <Text style={styles.emotionalInsightsDismissText}>✕ Dismiss</Text>
+            </TouchableOpacity>
           </View>
         )}
 
@@ -919,9 +969,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         {/* Divider */}
         <View style={styles.divider} />
 
-        {/* Send to Practitioner */}
+        {/* Send to Coach */}
         <View style={styles.sectionLabelRow}>
-          <Text style={styles.checkboxLabel}>📬 Send to Practitioner</Text>
+          <Text style={styles.checkboxLabel}>📬 Send to Coach</Text>
           {!isConnect && (
             <View style={[styles.plusBadge, styles.connectBadge]}>
               <Text style={styles.plusBadgeText}>Connect</Text>
@@ -944,7 +994,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
             {sendToPractitioner && <Text style={styles.checkmark}>✓</Text>}
           </View>
           <Text style={styles.checkboxLabel}>
-            {isConnect ? 'Send this entry to my practitioner' : '🔒 Upgrade to Connect to share with practitioners'}
+            {isConnect ? 'Send this entry to my coach' : '🔒 Upgrade to Connect to share with coaches'}
           </Text>
         </TouchableOpacity>
 
@@ -956,7 +1006,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
             ) : practitioners.length === 0 ? (
               <View style={styles.noPractitionersContainer}>
                 <Text style={styles.noPractitionersText}>
-                  ⚠️ No practitioners found. Add a practitioner in Settings to share entries.
+                  ⚠️ No coaches found. Add a coach in Settings to share entries.
                 </Text>
                 <TouchableOpacity
                   style={styles.goToSettingsButton}
@@ -968,7 +1018,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
               </View>
             ) : (
               <View>
-                <Text style={styles.pickerLabel}>Select Practitioner:</Text>
+                <Text style={styles.pickerLabel}>Select Coach:</Text>
                 <View style={styles.pickerContainer}>
                   <Picker
                     selectedValue={selectedPractitionerId}
@@ -1000,7 +1050,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 
         <Text style={styles.helpText}>
           Your journal entries are private and only visible to you and any
-          practitioners you choose to share with.
+          coaches you choose to share with.
         </Text>
       </View>
 
@@ -1189,6 +1239,56 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.base,
     fontStyle: 'italic',
     paddingHorizontal: spacing.lg,
+  },
+
+  // Emotional Insights Display Styles
+  emotionalInsightsContainer: {
+    backgroundColor: 'rgba(42, 105, 114, 0.1)',
+    borderRadius: borderRadius.lg,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.brandPrimary,
+    padding: spacing.base,
+    marginTop: spacing.base,
+    marginBottom: spacing.base,
+  },
+  emotionalInsightsTitle: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.md,
+    color: colors.brandPrimary,
+    marginBottom: spacing.sm,
+  },
+  emotionalInsightsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  emotionalInsightsChip: {
+    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    minWidth: 80,
+  },
+  emotionalInsightsLabel: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.fontSecondary,
+  },
+  emotionalInsightsValue: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+    textTransform: 'capitalize',
+  },
+  emotionalInsightsDismiss: {
+    alignSelf: 'flex-end',
+    padding: spacing.xs,
+  },
+  emotionalInsightsDismissText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.fontSecondary,
   },
   
   // Journal Entry Section Styles

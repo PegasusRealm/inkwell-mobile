@@ -5,9 +5,10 @@
  */
 
 import React, {useEffect, useState} from 'react';
-import {Text, StyleSheet, StatusBar, View} from 'react-native';
+import {Text, StyleSheet, StatusBar, View, AppState, Platform} from 'react-native';
 import {NavigationContainer} from '@react-navigation/native';
 import auth, {FirebaseAuthTypes} from '@react-native-firebase/auth';
+import messaging from '@react-native-firebase/messaging';
 
 import SplashScreen from './src/screens/SplashScreen';
 import LoginScreen from './src/screens/LoginScreen';
@@ -55,6 +56,32 @@ function AppWithAuth(): React.JSX.Element {
       notificationService.initialize(user.uid);
     }
   }, [user]);
+
+  // Clear badge count when app opens or comes to foreground
+  useEffect(() => {
+    const clearBadge = async () => {
+      if (Platform.OS === 'ios') {
+        try {
+          // Use Firebase messaging to clear badge - works with RN 0.74+
+          await messaging().setBadge(0);
+        } catch (error) {
+          console.log('Badge clear not available:', error);
+        }
+      }
+    };
+    
+    // Clear on app launch
+    clearBadge();
+    
+    // Clear when app comes to foreground
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        clearBadge();
+      }
+    });
+    
+    return () => subscription.remove();
+  }, []);
 
   const handleSplashFinish = () => {
     setShowSplash(false);

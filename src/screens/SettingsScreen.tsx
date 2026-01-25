@@ -13,6 +13,7 @@ import {
   Share,
   Platform,
   Linking,
+  AppState,
 } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {Picker} from '@react-native-picker/picker';
@@ -108,6 +109,20 @@ export default function SettingsScreen({
     loadPushPreferences();
   }, []);
 
+  // Refresh push permission status when app returns from background (e.g., after changing settings)
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        // Refresh push permission status when app becomes active
+        loadPushPreferences();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [user]);
+
   const loadPractitioners = async () => {
     if (!user) return;
 
@@ -132,7 +147,7 @@ export default function SettingsScreen({
         .filter(doc => doc.exists)
         .map(doc => ({
           id: doc.id,
-          name: doc.data()?.displayName || doc.data()?.email || 'Practitioner',
+          name: doc.data()?.displayName || doc.data()?.email || 'Coach',
           email: doc.data()?.email || '',
         }));
 
@@ -155,7 +170,7 @@ export default function SettingsScreen({
       
       const approved = snapshot.docs.map(doc => ({
         id: doc.id,
-        name: doc.data().displayName || doc.data().signupUsername || 'Practitioner',
+        name: doc.data().displayName || doc.data().signupUsername || 'Coach',
         email: doc.data().email || '',
         specialties: doc.data().specialties || [],
       }));
@@ -218,13 +233,27 @@ export default function SettingsScreen({
       const userDoc = await firestore().collection('users').doc(user.uid).get();
       const userData = userDoc.data();
       
+      // IMPORTANT: Web app stores phoneNumber and timezone at root level,
+      // mobile was storing inside smsPreferences. Check both for compatibility.
+      
+      // Phone number: prefer root level (web), fall back to smsPreferences (old mobile)
+      const phone = userData?.phoneNumber || userData?.smsPreferences?.phoneNumber || '';
+      setPhoneNumber(phone);
+      
+      // Timezone: prefer root level (web), fall back to smsPreferences (old mobile)
+      const tz = userData?.timezone || userData?.smsPreferences?.timezone || 'America/New_York';
+      setSelectedTimezone(tz);
+      
+      // SMS enabled: web uses smsOptIn at root, mobile used smsPreferences.enabled
+      const enabled = userData?.smsOptIn || userData?.smsPreferences?.enabled || false;
+      setSmsEnabled(enabled);
+      
+      // Individual SMS preferences (these are correctly in smsPreferences on both)
       if (userData?.smsPreferences) {
-        setPhoneNumber(userData.smsPreferences.phoneNumber || '');
-        setSmsEnabled(userData.smsPreferences.enabled || false);
-        setSelectedTimezone(userData.smsPreferences.timezone || 'America/New_York');
         setSmsWishMilestones(userData.smsPreferences.wishMilestones !== false);
         setSmsDailyPrompts(userData.smsPreferences.dailyPrompts || false);
-        setSmsGratitudePrompts(userData.smsPreferences.gratitudePrompts !== false);
+        // Web uses dailyGratitude, mobile used gratitudePrompts
+        setSmsGratitudePrompts(userData.smsPreferences.dailyGratitude !== false || userData.smsPreferences.gratitudePrompts !== false);
         setSmsCoachReplies(userData.smsPreferences.coachReplies !== false);
         setSmsWeeklyInsights(userData.smsPreferences.weeklyInsights || false);
       }
@@ -245,17 +274,25 @@ export default function SettingsScreen({
 
     setSavingSms(true);
     try {
+      const cleanPhone = phoneNumber.replace(/\s/g, '');
+      
       await firestore()
         .collection('users')
         .doc(user.uid)
         .set({
+          // Save at root level for web app compatibility
+          phoneNumber: cleanPhone,
+          timezone: selectedTimezone,
+          smsOptIn: smsEnabled,
+          // Also save in smsPreferences for detailed preferences
           smsPreferences: {
-            phoneNumber: phoneNumber.replace(/\s/g, ''),
+            phoneNumber: cleanPhone,
             enabled: smsEnabled,
             timezone: selectedTimezone,
             wishMilestones: smsWishMilestones,
             dailyPrompts: smsDailyPrompts,
             gratitudePrompts: smsGratitudePrompts,
+            dailyGratitude: smsGratitudePrompts, // Web uses this name
             coachReplies: smsCoachReplies,
             weeklyInsights: smsWeeklyInsights,
             updatedAt: firestore.FieldValue.serverTimestamp(),
@@ -276,13 +313,22 @@ export default function SettingsScreen({
     if (!user) return;
 
     try {
-      // Check permission status
-      const status = await notificationService.checkPermissionStatus();
-      setPushPermissionStatus(status);
-
-      // Load saved preferences
+      // Load saved preferences first
       const prefs = await notificationService.loadPreferences(user.uid);
-      setPushEnabled(prefs.enabled && status === 'authorized');
+      
+      // If user previously enabled notifications, trust that setting
+      // Don't use checkPermissionStatus() - it returns cached/stale values
+      if (prefs.enabled) {
+        // User had it enabled - show as enabled and don't show warning
+        setPushPermissionStatus('authorized');
+        setPushEnabled(true);
+      } else {
+        // User hasn't enabled yet - show as not enabled, no warning needed
+        setPushPermissionStatus('not_determined');
+        setPushEnabled(false);
+      }
+      
+      // Load other preferences
       setPushDailyPrompts(prefs.dailyPrompts);
       setPushGratitudePrompts(prefs.gratitudePrompts);
       setPushWishMilestones(prefs.wishMilestones);
@@ -297,40 +343,28 @@ export default function SettingsScreen({
     if (!user) return;
 
     if (value) {
-      // Trying to enable - check permission status
-      if (pushPermissionStatus === 'denied') {
-        Alert.alert(
-          'Notifications Disabled',
-          'Push notifications are disabled in your device settings. Would you like to open Settings to enable them?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Open Settings', onPress: () => notificationService.openSettings() },
-          ]
-        );
-        return;
-      }
-
-      // Request permission
-      const granted = await notificationService.requestPermissionAndEnable(user.uid);
-      if (granted) {
-        setPushEnabled(true);
-        setPushPermissionStatus('authorized');
-        await savePushPreferences(true);
+      // Enable push notifications
+      setPushEnabled(true);
+      setPushPermissionStatus('authorized');
+      
+      // Get FCM token and save preferences
+      const tokenResult = await notificationService.getAndSaveToken(user.uid);
+      await savePushPreferences(true, true); // skipAlert = true, we handle it here
+      
+      if (tokenResult.success) {
+        Alert.alert('Success', 'Push notifications enabled!');
       } else {
-        setPushPermissionStatus('denied');
-        Alert.alert(
-          'Permission Required',
-          'Please enable notifications in your device settings to receive push notifications.'
-        );
+        Alert.alert('Error', 'Could not enable push notifications. Please check your device settings.');
       }
     } else {
       // Disabling
       setPushEnabled(false);
-      await savePushPreferences(false);
+      await savePushPreferences(false, true);
+      Alert.alert('Success', 'Push notifications disabled.');
     }
   };
 
-  const savePushPreferences = async (enabled?: boolean) => {
+  const savePushPreferences = async (enabled?: boolean, skipAlert?: boolean) => {
     if (!user) return;
 
     setSavingPush(true);
@@ -345,14 +379,18 @@ export default function SettingsScreen({
       };
 
       const success = await notificationService.savePreferences(user.uid, prefs);
-      if (success) {
-        Alert.alert('Success', 'Push notification preferences updated');
-      } else {
-        Alert.alert('Error', 'Failed to save preferences. Please try again.');
+      if (!skipAlert) {
+        if (success) {
+          Alert.alert('Success', 'Push notification preferences updated');
+        } else {
+          Alert.alert('Error', 'Failed to save preferences. Please try again.');
+        }
       }
     } catch (error) {
       console.error('Error saving push preferences:', error);
-      Alert.alert('Error', 'Failed to save preferences. Please try again.');
+      if (!skipAlert) {
+        Alert.alert('Error', 'Failed to save preferences. Please try again.');
+      }
     } finally {
       setSavingPush(false);
     }
@@ -565,7 +603,7 @@ export default function SettingsScreen({
 
   const handleConnectToApproved = async () => {
     if (!selectedApprovedId) {
-      Alert.alert('Error', 'Please select a practitioner from the list');
+      Alert.alert('Error', 'Please select a coach from the list');
       return;
     }
 
@@ -594,8 +632,8 @@ export default function SettingsScreen({
       setSelectedApprovedId('');
       await loadPractitioners();
     } catch (error) {
-      console.error('Error connecting to practitioner:', error);
-      Alert.alert('Error', 'Failed to connect to practitioner. Please try again.');
+      console.error('Error connecting to coach:', error);
+      Alert.alert('Error', 'Failed to connect to coach. Please try again.');
     } finally {
       setConnecting(false);
     }
@@ -605,6 +643,30 @@ export default function SettingsScreen({
     if (!inviteEmail.trim()) {
       Alert.alert('Error', 'Please enter an email address');
       return;
+    }
+
+    // SPAM PREVENTION: Check if user already has a coach or pending invite
+    try {
+      const userDoc = await firestore().collection('users').doc(user?.uid).get();
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        if (userData?.connectedCoach || userData?.connectedPractitioner || practitioners.length > 0) {
+          Alert.alert(
+            'Coach Already Connected',
+            'You already have a coach connected. Please disconnect first to invite a new one.'
+          );
+          return;
+        }
+        if (userData?.pendingPractitionerInvite) {
+          Alert.alert(
+            'Invitation Pending',
+            'You already have a pending invitation. Wait for a response or cancel it in the web app first.'
+          );
+          return;
+        }
+      }
+    } catch (checkError) {
+      console.error('Error checking existing coach status:', checkError);
     }
 
     setSendingInvite(true);
@@ -645,7 +707,7 @@ export default function SettingsScreen({
 
       Alert.alert(
         'Invitation Sent',
-        `An invitation has been sent to ${inviteEmail}. They will appear in your practitioners list once they accept.`,
+        `An invitation has been sent to ${inviteEmail}. They will appear in your coaches list once they accept.`,
       );
       
       setAddModalVisible(false);
@@ -677,7 +739,7 @@ export default function SettingsScreen({
 
   const handleRemovePractitioner = (practitionerId: string, practitionerName: string) => {
     Alert.alert(
-      'Remove Practitioner',
+      'Remove Coach',
       `Are you sure you want to remove ${practitionerName}? You will no longer be able to share journal entries with them.`,
       [
         {text: 'Cancel', style: 'cancel'},
@@ -696,10 +758,10 @@ export default function SettingsScreen({
                 });
               
               await loadPractitioners();
-              Alert.alert('Success', 'Practitioner removed');
+              Alert.alert('Success', 'Coach removed');
             } catch (error) {
               console.error('Error removing practitioner:', error);
-              Alert.alert('Error', 'Failed to remove practitioner');
+              Alert.alert('Error', 'Failed to remove coach');
             }
           },
         },
@@ -829,7 +891,7 @@ export default function SettingsScreen({
             <View style={styles.subscriptionPrompt}>
               <Text style={styles.subscriptionPromptText}>
                 <Text style={{fontWeight: '600'}}>Plus:</Text> Unlimited AI prompts & reflections, InkOutLoud transcription, file attachments, email insights, SMS notifications{"\n\n"}
-                <Text style={{fontWeight: '600'}}>Connect:</Text> All Plus features + licensed practitioner support
+                <Text style={{fontWeight: '600'}}>Connect:</Text> All Plus features + certified coach support
               </Text>
             </View>
           )}
@@ -849,14 +911,14 @@ export default function SettingsScreen({
         </TouchableOpacity>
       </View>
 
-      {/* Available Practitioners Section */}
+      {/* Available Coaches Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Connect with InkWell Practitioners</Text>
+        <Text style={styles.sectionTitle}>Connect with InkWell Coaches</Text>
         
         {!isConnect ? (
           <View style={styles.card}>
             <Text style={styles.lockedDescription}>
-              🔒 Upgrade to Connect to work with licensed practitioners who can view your journal entries and provide professional support.
+              🔒 Upgrade to Connect to work with certified coaches who can view your journal entries and provide professional support.
             </Text>
             <TouchableOpacity
               style={[styles.upgradePromptButton, styles.upgradeConnectButton]}
@@ -867,7 +929,7 @@ export default function SettingsScreen({
         ) : (
           <View style={styles.card}>
             <Text style={styles.approvedDescription}>
-              Choose from our verified practitioners who are available to support InkWell users.
+              Choose from our verified coaches who are available to support InkWell users.
             </Text>
             
             {loadingApproved ? (
@@ -880,13 +942,13 @@ export default function SettingsScreen({
               </Text>
             ) : (
               <>
-                <Text style={styles.inputLabel}>Select Practitioner</Text>
+                <Text style={styles.inputLabel}>Select Coach</Text>
                 <Picker
                   selectedValue={selectedApprovedId}
                   onValueChange={(value) => setSelectedApprovedId(value)}
                   style={styles.picker}
                   itemStyle={styles.pickerItem}>
-                  <Picker.Item label="Choose a practitioner..." value="" />
+                  <Picker.Item label="Choose a coach..." value="" />
                   {approvedPractitioners.map(pract => (
                     <Picker.Item
                       key={pract.id}
@@ -901,7 +963,7 @@ export default function SettingsScreen({
                   onPress={handleConnectToApproved}
                   disabled={connecting || !selectedApprovedId}>
                   <Text style={styles.modalSendButtonText}>
-                    {connecting ? 'Connecting...' : 'Connect to Practitioner'}
+                    {connecting ? 'Connecting...' : 'Connect to Coach'}
                   </Text>
                 </TouchableOpacity>
               </>
@@ -916,11 +978,11 @@ export default function SettingsScreen({
         )}
       </View>
 
-      {/* My Practitioners Section - only show for Connect users */}
+      {/* My Coaches Section - only show for Connect users */}
       {isConnect && (
         <View style={styles.section}>
           <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Practitioners</Text>
+            <Text style={styles.sectionTitle}>My Coaches</Text>
             <TouchableOpacity
               style={styles.addButton}
               onPress={() => setAddModalVisible(true)}>
@@ -935,7 +997,7 @@ export default function SettingsScreen({
           ) : practitioners.length === 0 ? (
             <View style={styles.card}>
               <Text style={styles.emptyText}>
-                No practitioners added yet. Add a practitioner to share journal entries and get support.
+                No coaches added yet. Add a coach to share journal entries and get support.
               </Text>
             </View>
           ) : (
@@ -1049,11 +1111,6 @@ export default function SettingsScreen({
           <View style={styles.switchRow}>
             <View style={styles.switchLabel}>
               <Text style={styles.switchTitle}>Enable Push Notifications</Text>
-              {pushPermissionStatus === 'denied' && (
-                <Text style={styles.permissionWarning}>
-                  Notifications disabled in device settings
-                </Text>
-              )}
             </View>
             <Switch
               value={pushEnabled}
@@ -1461,7 +1518,7 @@ export default function SettingsScreen({
 
             <Text style={styles.modalDescription}>
               • All your journal entries will be deleted{`\n`}
-              • Your practitioner connections will be removed{`\n`}
+              • Your coach connections will be removed{`\n`}
               • This cannot be undone after 30 days{`\n`}
               {`\n`}
               You have a 30-day grace period to cancel by logging in again.
@@ -1486,7 +1543,7 @@ export default function SettingsScreen({
         </View>
       </Modal>
 
-      {/* Add Practitioner Modal */}
+      {/* Add Coach Modal */}
       <Modal
         visible={addModalVisible}
         animationType="slide"
@@ -1495,18 +1552,18 @@ export default function SettingsScreen({
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Invite Practitioner</Text>
+              <Text style={styles.modalTitle}>Invite Coach</Text>
               <TouchableOpacity onPress={() => setAddModalVisible(false)}>
                 <Text style={styles.modalCloseButton}>✕</Text>
               </TouchableOpacity>
             </View>
 
             <Text style={styles.modalDescription}>
-              Send an invitation to your practitioner or coach. They will receive an email to set up their account.
+              Send an invitation to your coach. They will receive an email to set up their account.
             </Text>
 
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Practitioner Name (Optional)</Text>
+              <Text style={styles.inputLabel}>Coach Name (Optional)</Text>
               <TextInput
                 style={styles.input}
                 placeholder="Dr. Smith"
@@ -1520,7 +1577,7 @@ export default function SettingsScreen({
               <Text style={styles.inputLabel}>Email Address *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="practitioner@example.com"
+                placeholder="coach@example.com"
                 value={inviteEmail}
                 onChangeText={setInviteEmail}
                 keyboardType="email-address"

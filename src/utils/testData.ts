@@ -15,7 +15,7 @@ export const createTestEntry = async () => {
       promptUsed: 'What are you grateful for today?',
       reflectionUsed: 'This is a test reflection from Sophy AI. It demonstrates how the reflection section appears when expanded.',
       reflectionNote: 'Testing the reflection note display',
-      coachResponse: 'This is a sample practitioner response. Great work on your journaling practice!',
+      coachResponse: 'This is a sample coach response. Great work on your journaling practice!',
       newCoachReply: true,
       attachments: [],
       createdAt: new Date('2026-01-01T10:00:00').toISOString(),

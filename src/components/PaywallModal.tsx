@@ -142,7 +142,8 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
         `🎉 Welcome to ${tierName}!`,
         selectedTier === 'plus' 
           ? 'Enjoy unlimited AI prompts, SMS reminders, and insights!'
-          : 'You now have access to practitioner support!',
+          : 'You now have access to coach support!',
+
         [{ text: 'Start Using', onPress: () => { onPurchaseSuccess?.(); onClose(); } }],
       );
     } catch (error: any) {

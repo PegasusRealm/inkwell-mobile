@@ -22,7 +22,7 @@
 | Entitlement | Products | Features |
 |-------------|----------|----------|
 | `plus` | plus.monthly, plus.annual | AI, SMS, Export, Insights |
-| `connect` | connect.monthly | Plus features + 1 practitioner msg/week |
+| `connect` | connect.monthly | Plus features + 1 coach msg/week |
 
 ---
 
@@ -83,7 +83,7 @@ Get 12 months of InkWell Plus at a discounted rate. Includes unlimited AI prompt
 **Display Name (Localized - English US):** InkWell Connect Monthly
 **Description (Localized - English US):**
 ```
-Premium tier with everything in Plus, plus direct access to certified mental wellness practitioners. Includes 4 practitioner sessions per month, priority support, and advanced analytics for deeper personal growth.
+Premium tier with everything in Plus, plus direct access to certified wellness coaches. Includes 4 coaching sessions per month, priority support, and advanced analytics for deeper personal growth.
 ```
 
 ### Subscription Group Configuration:
@@ -231,7 +231,7 @@ npx react-native run-android
 
 **Connect Tier ($29.99/mo):**
 - Everything in Plus
-- 1 practitioner message per week (included)
+- 1 coach message per week (included)
 - Priority support
 - NO free trial (human support cost)
 
@@ -371,13 +371,13 @@ npm run ios:sim  # Or use Xcode for device testing
 - SMS reminders (Plus+ only)
 - AI prompts (20% free, 100% Plus+)
 - Data export (Plus+ only)
-- Practitioner connection (Connect only)
+- Coach connection (Connect only)
 
 **Recommended locations to add checks:**
 - Journal prompt generation screens
 - SMS settings toggle
 - Export functionality
-- Any practitioner-related features
+- Any coach-related features
 
 #### 4. **IMPLEMENT: Restore Purchases Functionality**  
 **Currently missing:**
