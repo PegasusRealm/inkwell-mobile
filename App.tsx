@@ -87,23 +87,24 @@ function AppWithAuth(): React.JSX.Element {
     setShowSplash(false);
   };
 
-  // Loading state
-  if (initializing) {
-    return (
-      <View style={[styles.container, {backgroundColor: colors.bgPrimary}]}>
-        <StatusBar barStyle={colors.statusBar} />
-        <Text style={[styles.title, {color: colors.fontMain}]}>Loading...</Text>
-      </View>
-    );
-  }
-
-  // Show splash screen
+  // ALWAYS show splash screen first - it runs its animation then calls onFinish
+  // This ensures users see the branded splash on every app launch
   if (showSplash) {
     return (
       <>
         <StatusBar barStyle={colors.statusBar} />
         <SplashScreen onFinish={handleSplashFinish} />
       </>
+    );
+  }
+
+  // Loading state (only shown after splash finishes, while auth initializes)
+  if (initializing) {
+    return (
+      <View style={[styles.container, {backgroundColor: colors.bgPrimary}]}>
+        <StatusBar barStyle={colors.statusBar} />
+        <Text style={[styles.title, {color: colors.fontMain}]}>Loading...</Text>
+      </View>
     );
   }
 
