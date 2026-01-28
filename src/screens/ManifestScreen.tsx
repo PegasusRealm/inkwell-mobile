@@ -14,6 +14,8 @@ import auth from '@react-native-firebase/auth';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import {refineManifest} from '../services/sophyApi';
+import OnboardingTip from '../components/OnboardingTip';
+import {useOnboarding} from '../hooks/useOnboarding';
 import type {TabScreenProps} from '../navigation/types';
 
 const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
@@ -22,6 +24,26 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // Onboarding hook for first-time users
+  const {shouldShowTip, markTipShown, getTip, markMilestone} = useOnboarding();
+  const [showOnboardingTip, setShowOnboardingTip] = useState(false);
+
+  // Show onboarding tip after a short delay on first visit
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (shouldShowTip('manifest_intro')) {
+        setShowOnboardingTip(true);
+      }
+    }, 1500); // 1.5 second delay per best practices
+    return () => clearTimeout(timer);
+  }, [shouldShowTip]);
+
+  const handleDismissOnboarding = async () => {
+    setShowOnboardingTip(false);
+    await markTipShown('manifest_intro');
+  };
+
   // Add Settings button to header
   useEffect(() => {
     navigation.setOptions({
@@ -634,6 +656,16 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
           journey.
         </Text>
       </View>
+
+      {/* Onboarding Tip for first-time users */}
+      <OnboardingTip
+        visible={showOnboardingTip}
+        icon={getTip('manifest_intro').icon}
+        title={getTip('manifest_intro').title}
+        message={getTip('manifest_intro').message}
+        actionLabel={getTip('manifest_intro').actionLabel}
+        onDismiss={handleDismissOnboarding}
+      />
     </ScrollView>
   );
 };

@@ -24,6 +24,7 @@ import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import type {ThemeMode} from '../theme';
 import type {RootStackScreenProps} from '../navigation/types';
 import {useSubscription} from '../hooks/useSubscription';
+import {useOnboarding} from '../hooks/useOnboarding';
 import PaywallModal from '../components/PaywallModal';
 import notificationService, {PushNotificationPreferences} from '../services/notificationService';
 
@@ -88,6 +89,26 @@ export default function SettingsScreen({
     showPaywall,
     closePaywall,
   } = useSubscription();
+
+  // Onboarding hook for reset functionality
+  const {resetOnboarding} = useOnboarding();
+
+  const handleResetOnboarding = async () => {
+    Alert.alert(
+      'Reset Onboarding',
+      'This will show the welcome tips again on each screen. Useful for testing or if you want to see the tips again.',
+      [
+        {text: 'Cancel', style: 'cancel'},
+        {
+          text: 'Reset',
+          onPress: async () => {
+            await resetOnboarding();
+            Alert.alert('Done', 'Onboarding tips have been reset. You\'ll see them again on each screen.');
+          },
+        },
+      ]
+    );
+  };
 
   const handleUpgradePress = async () => {
     try {
@@ -907,6 +928,12 @@ export default function SettingsScreen({
           style={styles.button}
           onPress={() => navigation.navigate('Info')}>
           <Text style={styles.buttonText}>📖 Help & Tutorial</Text>
+          <Text style={styles.chevron}>›</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.button}
+          onPress={handleResetOnboarding}>
+          <Text style={styles.buttonText}>🔄 Reset Welcome Tips</Text>
           <Text style={styles.chevron}>›</Text>
         </TouchableOpacity>
       </View>

@@ -34,6 +34,8 @@ import {
   AI_DAILY_LIMIT,
 } from '../services/aiUsageService';
 import PaywallModal from '../components/PaywallModal';
+import OnboardingTip from '../components/OnboardingTip';
+import {useOnboarding} from '../hooks/useOnboarding';
 import type {TabScreenProps} from '../navigation/types';
 
 const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
@@ -52,6 +54,25 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
     showPaywall,
     closePaywall,
   } = useSubscription();
+
+  // Onboarding hook for first-time users
+  const {shouldShowTip, markTipShown, getTip, markMilestone} = useOnboarding();
+  const [showOnboardingTip, setShowOnboardingTip] = useState(false);
+
+  // Show onboarding tip after a short delay on first visit
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (shouldShowTip('journal_intro')) {
+        setShowOnboardingTip(true);
+      }
+    }, 1500); // 1.5 second delay per best practices
+    return () => clearTimeout(timer);
+  }, [shouldShowTip]);
+
+  const handleDismissOnboarding = async () => {
+    setShowOnboardingTip(false);
+    await markTipShown('journal_intro');
+  };
 
   // Add Settings button to header
   useEffect(() => {
@@ -1058,6 +1079,16 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       <PaywallModal
         visible={showPaywall}
         onClose={closePaywall}
+      />
+
+      {/* Onboarding Tip for first-time users */}
+      <OnboardingTip
+        visible={showOnboardingTip}
+        icon={getTip('journal_intro').icon}
+        title={getTip('journal_intro').title}
+        message={getTip('journal_intro').message}
+        actionLabel={getTip('journal_intro').actionLabel}
+        onDismiss={handleDismissOnboarding}
       />
     </ScrollView>
   );

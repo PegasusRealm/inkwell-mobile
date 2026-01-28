@@ -15,6 +15,8 @@ import firestore from '@react-native-firebase/firestore';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import PastEntryCard from '../components/PastEntryCard';
+import OnboardingTip from '../components/OnboardingTip';
+import {useOnboarding} from '../hooks/useOnboarding';
 import type {TabScreenProps} from '../navigation/types';
 
 const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}) => {
@@ -23,6 +25,26 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // Onboarding hook for first-time users
+  const {shouldShowTip, markTipShown, getTip} = useOnboarding();
+  const [showOnboardingTip, setShowOnboardingTip] = useState(false);
+
+  // Show onboarding tip after a short delay on first visit
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (shouldShowTip('past_entries_intro')) {
+        setShowOnboardingTip(true);
+      }
+    }, 1500); // 1.5 second delay per best practices
+    return () => clearTimeout(timer);
+  }, [shouldShowTip]);
+
+  const handleDismissOnboarding = async () => {
+    setShowOnboardingTip(false);
+    await markTipShown('past_entries_intro');
+  };
+
   // Add Settings button to header
   useEffect(() => {
     navigation.setOptions({
@@ -587,6 +609,16 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
           </View>
         </View>
       </Modal>
+
+      {/* Onboarding Tip for first-time users */}
+      <OnboardingTip
+        visible={showOnboardingTip}
+        icon={getTip('past_entries_intro').icon}
+        title={getTip('past_entries_intro').title}
+        message={getTip('past_entries_intro').message}
+        actionLabel={getTip('past_entries_intro').actionLabel}
+        onDismiss={handleDismissOnboarding}
+      />
     </ScrollView>
   );
 };
