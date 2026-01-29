@@ -13,6 +13,7 @@ import {
   Linking,
   ActivityIndicator,
   StatusBar,
+  ActionSheetIOS,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
@@ -21,6 +22,7 @@ import Voice, {
   SpeechErrorEvent,
 } from '@react-native-voice/voice';
 import DocumentPicker from 'react-native-document-picker';
+import {launchImageLibrary, ImagePickerResponse} from 'react-native-image-picker';
 import storage from '@react-native-firebase/storage';
 import firestore from '@react-native-firebase/firestore';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
@@ -86,6 +88,21 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       ),
     });
   }, [navigation]);
+
+  // Journal Mode Tab State
+  type JournalMode = 'gratitude' | 'inkblot' | 'full';
+  const [activeMode, setActiveMode] = useState<JournalMode>('gratitude');
+
+  // Gratitude Section State (3 items per research)
+  const [gratitude1, setGratitude1] = useState('');
+  const [gratitude2, setGratitude2] = useState('');
+  const [gratitude3, setGratitude3] = useState('');
+  const [savingGratitude, setSavingGratitude] = useState(false);
+
+  // InkBlot Quick Entry State
+  const [inkblotText, setInkblotText] = useState('');
+  const [savingInkblot, setSavingInkblot] = useState(false);
+  const [inkblotRecording, setInkblotRecording] = useState(false);
 
   // Prompt Section state
   const [promptTopic, setPromptTopic] = useState('');
@@ -475,10 +492,85 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       return; // Paywall will show automatically
     }
 
+    // Show action sheet to choose between Photos and Files
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', '📷 Photo Library', '📄 Files'],
+          cancelButtonIndex: 0,
+        },
+        buttonIndex => {
+          if (buttonIndex === 1) {
+            handlePickPhotos();
+          } else if (buttonIndex === 2) {
+            handlePickDocuments();
+          }
+        },
+      );
+    } else {
+      // Android - show Alert as action sheet
+      Alert.alert(
+        'Attach Files',
+        'Choose where to select from:',
+        [
+          {text: 'Cancel', style: 'cancel'},
+          {text: '📷 Photo Library', onPress: handlePickPhotos},
+          {text: '📄 Files', onPress: handlePickDocuments},
+        ],
+      );
+    }
+  };
+
+  const handlePickPhotos = async () => {
+    try {
+      const result: ImagePickerResponse = await launchImageLibrary({
+        mediaType: 'mixed',
+        selectionLimit: 10,
+        quality: 0.8,
+      });
+
+      if (result.didCancel) {
+        return;
+      }
+
+      if (result.errorCode) {
+        console.error('Image picker error:', result.errorMessage);
+        Alert.alert('Error', 'Failed to access photo library.');
+        return;
+      }
+
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      const validAssets = (result.assets || []).filter(asset => {
+        if (asset.fileSize && asset.fileSize > MAX_FILE_SIZE) {
+          Alert.alert(
+            'File Too Large',
+            `${asset.fileName || 'Photo'} is too large (max 10MB). It will be skipped.`,
+          );
+          return false;
+        }
+        return true;
+      });
+
+      setAttachments(prev => [
+        ...prev,
+        ...validAssets.map(asset => ({
+          uri: asset.uri || '',
+          name: asset.fileName || `photo_${Date.now()}.jpg`,
+          type: asset.type || 'image/jpeg',
+          size: asset.fileSize || 0,
+        })),
+      ]);
+    } catch (error) {
+      console.error('Photo picker error:', error);
+      Alert.alert('Error', 'Failed to pick photos.');
+    }
+  };
+
+  const handlePickDocuments = async () => {
     try {
       const results = await DocumentPicker.pick({
         allowMultiSelection: true,
-        type: [DocumentPicker.types.images, DocumentPicker.types.pdf],
+        type: [DocumentPicker.types.images, DocumentPicker.types.pdf, DocumentPicker.types.allFiles],
       });
 
       // Validate file sizes (10MB max per file)
@@ -732,9 +824,268 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
     }
   };
 
+  // ==================== GRATITUDE SAVE HANDLER ====================
+  const handleSaveGratitude = async () => {
+    const gratitudes = [gratitude1, gratitude2, gratitude3].filter(g => g.trim());
+    if (gratitudes.length === 0) {
+      Alert.alert('Empty Entry', 'Please write at least one thing you\'re grateful for.');
+      return;
+    }
+
+    setSavingGratitude(true);
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      // Format gratitude entry with numbered list
+      const gratitudeText = gratitudes
+        .map((g, i) => `${i + 1}. ${g.trim()}`)
+        .join('\n');
+
+      const entryData: any = {
+        text: `🙏 Today I'm grateful for:\n\n${gratitudeText}`,
+        userId: user.uid,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+        entryMode: 'gratitude',
+        tags: ['gratitude'],
+      };
+
+      await firestore().collection('journalEntries').add(entryData);
+
+      Alert.alert('🙏 Gratitude Saved!', 'Your gratitude entry has been saved.');
+
+      // Clear form
+      setGratitude1('');
+      setGratitude2('');
+      setGratitude3('');
+    } catch (error: any) {
+      console.error('Error saving gratitude:', error);
+      Alert.alert('Error', 'Failed to save gratitude entry. Please try again.');
+    } finally {
+      setSavingGratitude(false);
+    }
+  };
+
+  // ==================== INKBLOT SAVE HANDLER ====================
+  const handleSaveInkblot = async () => {
+    if (!inkblotText.trim()) {
+      Alert.alert('Empty InkBlot', 'Please write something first.');
+      return;
+    }
+
+    setSavingInkblot(true);
+    try {
+      const user = auth().currentUser;
+      if (!user) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      const entryData: any = {
+        text: `⚡ ${inkblotText.trim()}`,
+        userId: user.uid,
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+        entryMode: 'inkblot',
+        tags: ['inkblot', 'quick'],
+      };
+
+      await firestore().collection('journalEntries').add(entryData);
+
+      Alert.alert('⚡ InkBlot Saved!', 'Your quick thought has been captured.');
+
+      // Clear form
+      setInkblotText('');
+    } catch (error: any) {
+      console.error('Error saving InkBlot:', error);
+      Alert.alert('Error', 'Failed to save InkBlot. Please try again.');
+    } finally {
+      setSavingInkblot(false);
+    }
+  };
+
+  // ==================== INKBLOT VOICE HANDLER ====================
+  const handleInkblotVoiceToggle = async () => {
+    if (inkblotRecording) {
+      // Stop recording
+      try {
+        await Voice.stop();
+        setInkblotRecording(false);
+        
+        const recognizedText = voiceText || voicePartialText;
+        if (recognizedText && recognizedText.trim().length > 0) {
+          setInkblotText(prev => prev + (prev ? ' ' : '') + recognizedText.trim());
+        }
+        setVoiceText('');
+        setVoicePartialText('');
+      } catch (error) {
+        console.error('Stop recording error:', error);
+        setInkblotRecording(false);
+      }
+    } else {
+      // Start recording
+      const hasPermission = await requestMicrophonePermission();
+      if (!hasPermission) {
+        Alert.alert('Permission Denied', 'Microphone access is required for voice input.');
+        return;
+      }
+
+      try {
+        setVoiceText('');
+        setVoicePartialText('');
+        await Voice.start('en-US');
+        setInkblotRecording(true);
+      } catch (error: any) {
+        console.error('Voice start error:', error);
+        Alert.alert('Voice Recognition Failed', 'Could not start voice recognition.');
+      }
+    }
+  };
+
   return (
     <ScrollView style={styles.container}>
       <View style={styles.content}>
+        {/* Journal Mode Tabs */}
+        <View style={styles.modeTabsContainer}>
+          <TouchableOpacity
+            style={[styles.modeTab, activeMode === 'gratitude' && styles.modeTabActive]}
+            onPress={() => setActiveMode('gratitude')}>
+            <Text style={[styles.modeTabText, activeMode === 'gratitude' && styles.modeTabTextActive]}>
+              🙏 Gratitude
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeTab, activeMode === 'inkblot' && styles.modeTabActive]}
+            onPress={() => setActiveMode('inkblot')}>
+            <Text style={[styles.modeTabText, activeMode === 'inkblot' && styles.modeTabTextActive]}>
+              ⚡ InkBlot
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeTab, activeMode === 'full' && styles.modeTabActive]}
+            onPress={() => setActiveMode('full')}>
+            <Text style={[styles.modeTabText, activeMode === 'full' && styles.modeTabTextActive]}>
+              ✍️ Full Journal
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* ================== GRATITUDE MODE ================== */}
+        {activeMode === 'gratitude' && (
+          <View style={styles.modeContent}>
+            <Text style={styles.modeTitle}>What are you grateful for today?</Text>
+            <Text style={styles.modeSubtitle}>
+              Research shows listing 3+ gratitudes improves well-being, sleep, and relationships.
+            </Text>
+
+            <View style={styles.gratitudeInputContainer}>
+              <Text style={styles.gratitudeNumber}>1.</Text>
+              <TextInput
+                style={styles.gratitudeInput}
+                placeholder="I'm grateful for..."
+                placeholderTextColor={colors.fontMuted}
+                value={gratitude1}
+                onChangeText={setGratitude1}
+                multiline
+              />
+            </View>
+
+            <View style={styles.gratitudeInputContainer}>
+              <Text style={styles.gratitudeNumber}>2.</Text>
+              <TextInput
+                style={styles.gratitudeInput}
+                placeholder="I'm grateful for..."
+                placeholderTextColor={colors.fontMuted}
+                value={gratitude2}
+                onChangeText={setGratitude2}
+                multiline
+              />
+            </View>
+
+            <View style={styles.gratitudeInputContainer}>
+              <Text style={styles.gratitudeNumber}>3.</Text>
+              <TextInput
+                style={styles.gratitudeInput}
+                placeholder="I'm grateful for..."
+                placeholderTextColor={colors.fontMuted}
+                value={gratitude3}
+                onChangeText={setGratitude3}
+                multiline
+              />
+            </View>
+
+            <TouchableOpacity
+              style={[styles.saveButton, savingGratitude && styles.saveButtonDisabled]}
+              onPress={handleSaveGratitude}
+              disabled={savingGratitude || (!gratitude1.trim() && !gratitude2.trim() && !gratitude3.trim())}>
+              <Text style={styles.saveButtonText}>
+                {savingGratitude ? 'Saving...' : '🙏 Save Gratitude Entry'}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.helpText}>
+              Your gratitude entries are saved to your journal and visible in Past Entries.
+            </Text>
+          </View>
+        )}
+
+        {/* ================== INKBLOT MODE ================== */}
+        {activeMode === 'inkblot' && (
+          <View style={styles.modeContent}>
+            <Text style={styles.modeTitle}>Quick thought? Drop an InkBlot.</Text>
+            <Text style={styles.modeSubtitle}>
+              Capture a moment, feeling, or fleeting thought in seconds.
+            </Text>
+
+            <TextInput
+              style={styles.inkblotInput}
+              placeholder="What's on your mind right now?"
+              placeholderTextColor={colors.fontMuted}
+              value={inkblotText}
+              onChangeText={setInkblotText}
+              multiline
+              maxLength={500}
+            />
+
+            <Text style={styles.characterCount}>
+              {inkblotText.length}/500 characters
+            </Text>
+
+            {/* Voice input for InkBlot */}
+            <TouchableOpacity
+              style={[styles.voiceButton, inkblotRecording && styles.voiceButtonRecording]}
+              onPress={handleInkblotVoiceToggle}>
+              <Text style={styles.voiceButtonText}>
+                {inkblotRecording ? '🛑 Stop Listening' : '🎙️ Speak Your InkBlot'}
+              </Text>
+            </TouchableOpacity>
+
+            {inkblotRecording && (
+              <Text style={styles.voiceStatus}>🎤 Listening... Speak now</Text>
+            )}
+
+            <TouchableOpacity
+              style={[styles.saveButton, savingInkblot && styles.saveButtonDisabled]}
+              onPress={handleSaveInkblot}
+              disabled={savingInkblot || !inkblotText.trim()}>
+              <Text style={styles.saveButtonText}>
+                {savingInkblot ? 'Saving...' : '⚡ Save InkBlot'}
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.helpText}>
+              InkBlots are quick journal entries — perfect for busy days.
+            </Text>
+          </View>
+        )}
+
+        {/* ================== FULL JOURNAL MODE ================== */}
+        {activeMode === 'full' && (
+          <View style={styles.modeContent}>
         {/* Prompt Section */}
         <Text style={styles.sophyIntro}>
           Meet <Text style={styles.sophyName}>Sophy</Text> — your gentle journaling companion. Trained in wellness and psychology, she's here to offer insight and reflection (never instructions or "have-tos") to help you discover more from your journaling practice.
@@ -949,7 +1300,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           onPress={handlePickFiles}
           disabled={uploadingFiles}>
           <Text style={styles.attachButtonText}>
-            {uploadingFiles ? 'Uploading...' : isPremium ? '📎 Select Files' : '🔒 Upgrade to Attach Files'}
+            {uploadingFiles ? 'Uploading...' : isPremium ? '� Add Photos or Files' : '🔒 Upgrade to Attach Files'}
           </Text>
         </TouchableOpacity>
 
@@ -1073,6 +1424,8 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           Your journal entries are private and only visible to you and any
           coaches you choose to share with.
         </Text>
+          </View>
+        )}
       </View>
 
       {/* Paywall Modal */}
@@ -1103,6 +1456,105 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   content: {
     padding: spacing.lg,
   },
+  
+  // ==================== MODE TABS STYLES ====================
+  modeTabsContainer: {
+    flexDirection: 'row',
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.lg,
+    padding: spacing.xs,
+    marginBottom: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  modeTab: {
+    flex: 1,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xs,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modeTabActive: {
+    backgroundColor: colors.brandPrimary,
+  },
+  modeTabText: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+  },
+  modeTabTextActive: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+  },
+  modeContent: {
+    flex: 1,
+  },
+  modeTitle: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.xl,
+    color: colors.fontMain,
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
+  modeSubtitle: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.lg,
+    lineHeight: 20,
+  },
+  
+  // ==================== GRATITUDE STYLES ====================
+  gratitudeInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: spacing.md,
+  },
+  gratitudeNumber: {
+    fontFamily: fontFamily.headerBold,
+    fontSize: fontSize.xl,
+    color: colors.brandPrimary,
+    width: 30,
+    marginTop: spacing.sm,
+  },
+  gratitudeInput: {
+    flex: 1,
+    fontFamily: fontFamily.body,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.lg,
+    padding: spacing.base,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    minHeight: 60,
+    textAlignVertical: 'top',
+  },
+  
+  // ==================== INKBLOT STYLES ====================
+  inkblotInput: {
+    fontFamily: fontFamily.body,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.lg,
+    padding: spacing.base,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    minHeight: 120,
+    textAlignVertical: 'top',
+    marginBottom: spacing.sm,
+  },
+  voiceStatus: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.brandPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.base,
+  },
+
   title: {
     fontFamily: fontFamily.header,
     fontSize: fontSize.xxl,

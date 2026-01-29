@@ -30,6 +30,7 @@
     "react-native-blob-util": "^0.24.6",
     "react-native-document-picker": "^9.3.1",
     "react-native-gesture-handler": "^2.30.0",
+    "react-native-image-picker": "^8.2.1",
     "react-native-purchases": "^9.6.13",
     "react-native-safe-area-context": "^5.6.2",
     "react-native-screens": "^3.31.1"
