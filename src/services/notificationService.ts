@@ -1,6 +1,7 @@
 import messaging from '@react-native-firebase/messaging';
 import firestore from '@react-native-firebase/firestore';
-import {Platform, PermissionsAndroid, Linking} from 'react-native';
+import {Platform, PermissionsAndroid, Linking, Alert} from 'react-native';
+import { navigateToPastEntries } from './navigationService';
 
 export interface PushNotificationPreferences {
   enabled: boolean;
@@ -88,30 +89,60 @@ class NotificationService {
   }
 
   // Get FCM token and save to Firestore - returns detailed result
-  async getAndSaveToken(userId: string): Promise<{success: boolean; token?: string; error?: string}> {
+  async getAndSaveToken(userId: string): Promise<{success: boolean; token?: string; error?: string; permissionStatus?: string}> {
     try {
-      await messaging().requestPermission();
+      console.log('🔔 Step 1: Requesting notification permission...');
+      
+      // Request permission and CHECK THE RESULT
+      const authStatus = await messaging().requestPermission();
+      console.log('🔔 Step 2: Permission result:', authStatus);
+      
+      // Check if permission was granted
+      const permissionGranted = 
+        authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+        authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+      
+      if (!permissionGranted) {
+        const statusName = authStatus === messaging.AuthorizationStatus.DENIED 
+          ? 'DENIED' 
+          : authStatus === messaging.AuthorizationStatus.NOT_DETERMINED 
+            ? 'NOT_DETERMINED' 
+            : `UNKNOWN (${authStatus})`;
+        console.log('🔔 Permission not granted:', statusName);
+        return { 
+          success: false, 
+          error: `Permission ${statusName}. Please enable notifications in Settings.`,
+          permissionStatus: statusName
+        };
+      }
+      
+      console.log('🔔 Step 3: Registering for remote messages...');
       await messaging().registerDeviceForRemoteMessages();
       
+      console.log('🔔 Step 4: Getting FCM token...');
       const token = await messaging().getToken();
+      console.log('🔔 Step 5: Token received:', token ? `${token.substring(0, 30)}...` : 'NULL');
       
       if (token && token.length > 0) {
+        console.log('🔔 Step 6: Saving token to Firestore...');
         await this.saveFCMToken(userId, token);
+        console.log('🔔 Step 7: Token saved successfully!');
         
         if (!this.initialized) {
           messaging().onTokenRefresh(async (newToken) => {
+            console.log('🔔 Token refreshed, saving new token...');
             await this.saveFCMToken(userId, newToken);
           });
           this.setupNotificationHandlers();
           this.initialized = true;
         }
         
-        return { success: true, token };
+        return { success: true, token, permissionStatus: 'AUTHORIZED' };
       } else {
-        return { success: false, error: 'No FCM token returned from Firebase' };
+        return { success: false, error: 'No FCM token returned from Firebase. Is APNs configured?', permissionStatus: 'AUTHORIZED' };
       }
     } catch (error: any) {
-      console.error('FCM token error:', error?.message);
+      console.error('🔔 FCM token error:', error?.message);
       const errorMsg = error?.message || error?.toString() || 'Unknown error';
       return { success: false, error: errorMsg };
     }
@@ -226,47 +257,78 @@ class NotificationService {
   }
 
   async initialize(userId: string) {
-    if (this.initialized) return;
+    if (this.initialized) {
+      console.log('📱 Notification service already initialized, skipping');
+      return;
+    }
+
+    console.log('🔔🔔🔔 INITIALIZING PUSH NOTIFICATIONS for user:', userId);
 
     try {
-      // Request permission
-      const authStatus = await this.requestPermission();
+      // Always set up notification handlers first
+      // This ensures we can receive notifications even if we can't request permission
+      this.setupNotificationHandlers();
+      console.log('📱 Notification handlers set up');
       
-      if (authStatus === messaging.AuthorizationStatus.AUTHORIZED || 
-          authStatus === messaging.AuthorizationStatus.PROVISIONAL) {
+      // Check if user has push notifications enabled in Firestore
+      const prefs = await this.loadPreferences(userId);
+      console.log('📱 Push prefs from Firestore:', JSON.stringify(prefs));
+      
+      // Always try to get and save token if on real device
+      // This ensures TestFlight builds always have fresh token
+      try {
+        console.log('📱 Step 1: Requesting notification permission...');
         
-        // Register for remote messages first
+        // IMPORTANT: Must request permission BEFORE getting token on iOS!
+        const authStatus = await messaging().requestPermission();
+        console.log('📱 Step 2: Permission result:', authStatus);
+        
+        const permissionGranted = 
+          authStatus === messaging.AuthorizationStatus.AUTHORIZED ||
+          authStatus === messaging.AuthorizationStatus.PROVISIONAL;
+        
+        if (!permissionGranted) {
+          console.warn('📱 Notification permission not granted, status:', authStatus);
+          // Still continue - user may grant later via Settings
+        }
+        
+        console.log('📱 Step 3: Registering for remote messages...');
         await messaging().registerDeviceForRemoteMessages();
         
-        // Get FCM token
+        console.log('📱 Step 4: Getting FCM token...');
         const token = await messaging().getToken();
-        console.log('FCM Token:', token);
         
-        // Store token in Firestore
-        await this.saveFCMToken(userId, token);
-        
-        // Listen for token refresh
-        messaging().onTokenRefresh(async (newToken) => {
-          console.log('FCM Token refreshed:', newToken);
-          await this.saveFCMToken(userId, newToken);
-        });
-        
-        // Set up notification handlers
-        this.setupNotificationHandlers();
-        
-        this.initialized = true;
-        console.log('✅ Push notifications initialized');
-      } else {
-        console.log('❌ Push notification permission denied');
+        if (token) {
+          console.log('📱 Step 5: FCM Token obtained:', token?.substring(0, 30) + '...');
+          await this.saveFCMToken(userId, token);
+          console.log('📱 Step 6: FCM Token saved to Firestore for user:', userId);
+          
+          // Listen for token refresh
+          messaging().onTokenRefresh(async (newToken) => {
+            console.log('📱 FCM Token refreshed');
+            await this.saveFCMToken(userId, newToken);
+          });
+        } else {
+          console.warn('📱 No FCM token returned - push notifications may not work');
+        }
+      } catch (tokenError: any) {
+        // On simulator or when APNS not configured, this will fail
+        console.error('📱 Token error full:', tokenError);
+        if (tokenError?.message?.includes('aps-environment')) {
+          console.warn('⚠️ Push notifications not configured (add Push Notification capability in Xcode)');
+        } else if (tokenError?.message?.includes('simulator')) {
+          console.log('📱 Running on simulator - push notifications not supported');
+        } else {
+          console.warn('⚠️ Could not get FCM token:', tokenError?.message);
+        }
       }
+      
+      this.initialized = true;
+      console.log('✅ Push notifications initialized');
     } catch (error: any) {
-      // Gracefully handle APS entitlement errors (not configured yet)
-      if (error?.message?.includes('aps-environment')) {
-        console.warn('⚠️ Push notifications not configured - skipping (add Push Notification capability in Xcode)');
-        this.initialized = true; // Mark as initialized to prevent retry loops
-        return;
-      }
       console.error('Error initializing notifications:', error);
+      // Still mark as initialized to prevent infinite retries
+      this.initialized = true;
     }
   }
 
@@ -308,7 +370,27 @@ class NotificationService {
     // Handle notifications when app is in foreground
     messaging().onMessage(async (remoteMessage) => {
       console.log('Foreground notification:', remoteMessage);
-      // You can show a local notification here if needed
+      
+      // Show an in-app alert for foreground notifications
+      const title = remoteMessage.notification?.title || 'InkWell';
+      const body = remoteMessage.notification?.body || '';
+      const type = remoteMessage.data?.type;
+      
+      if (type === 'coach_reply') {
+        // Show alert with option to view
+        Alert.alert(
+          title,
+          body,
+          [
+            { text: 'Later', style: 'cancel' },
+            { text: 'View', onPress: () => navigateToPastEntries() },
+          ],
+          { cancelable: true }
+        );
+      } else {
+        // For other notifications, just show a simple alert
+        Alert.alert(title, body);
+      }
     });
 
     // Handle notification when app is opened from background state
@@ -333,12 +415,17 @@ class NotificationService {
     // Handle navigation based on notification type
     console.log('Navigate to:', remoteMessage.data);
     
-    // Example: Navigate to specific screen based on notification data
-    // if (remoteMessage.data?.type === 'milestone') {
-    //   navigation.navigate('Manifest');
-    // } else if (remoteMessage.data?.type === 'practitioner_reply') {
-    //   navigation.navigate('PastEntries');
-    // }
+    const type = remoteMessage.data?.type;
+    
+    if (type === 'coach_reply') {
+      // Navigate to Past Entries to see the coach reply
+      navigateToPastEntries();
+    } else if (type === 'milestone') {
+      // Could navigate to Manifest screen
+      // For now, just go to PastEntries
+      navigateToPastEntries();
+    }
+    // Add more notification types as needed
   }
 
   async unsubscribe(userId: string) {

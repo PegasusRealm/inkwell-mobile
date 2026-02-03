@@ -20,8 +20,16 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
   // Theme hook for dynamic theming
   const {colors, isDark} = useTheme();
   
+  // Debug logging
+  console.log('🎬🎬🎬 SplashScreen RENDER');
+  
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
+  
+  // Prevent double-calling onFinish
+  const hasFinishedRef = useRef(false);
+  const onFinishRef = useRef(onFinish);
+  onFinishRef.current = onFinish;
   
   // Animation values
   const logoScale = useRef(new Animated.Value(0)).current;
@@ -34,6 +42,9 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
   const taglineOpacity = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    console.log('🎬🎬🎬 SplashScreen useEffect STARTING animation');
+    const startTime = Date.now();
+    
     // Sequence of animations
     Animated.sequence([
       // Phase 1: Small logo pops up (0-800ms)
@@ -138,7 +149,13 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
       ]),
     ]).start(() => {
       // Animation complete, call onFinish
-      onFinish();
+      const elapsed = Date.now() - startTime;
+      console.log('🎬🎬🎬 SplashScreen animation COMPLETE after', elapsed, 'ms');
+      
+      if (!hasFinishedRef.current) {
+        hasFinishedRef.current = true;
+        onFinishRef.current();
+      }
     });
   }, [
     logoScale,
@@ -149,7 +166,7 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
     finalLogoScale,
     finalLogoOpacity,
     taglineOpacity,
-    onFinish,
+    // Removed onFinish from deps - using ref instead
   ]);
 
   return (

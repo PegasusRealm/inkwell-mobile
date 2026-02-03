@@ -17,10 +17,18 @@ import {
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
-import Voice, {
-  SpeechResultsEvent,
-  SpeechErrorEvent,
-} from '@react-native-voice/voice';
+// Wrap Voice import to handle iOS compatibility issues
+let Voice: any = null;
+let SpeechResultsEvent: any = null;
+let SpeechErrorEvent: any = null;
+try {
+  const VoiceModule = require('@react-native-voice/voice');
+  Voice = VoiceModule.default;
+  SpeechResultsEvent = VoiceModule.SpeechResultsEvent;
+  SpeechErrorEvent = VoiceModule.SpeechErrorEvent;
+} catch (e) {
+  console.warn('Voice module not available:', e);
+}
 import DocumentPicker from 'react-native-document-picker';
 import {launchImageLibrary, ImagePickerResponse} from 'react-native-image-picker';
 import storage from '@react-native-firebase/storage';
@@ -37,6 +45,8 @@ import {
 } from '../services/aiUsageService';
 import PaywallModal from '../components/PaywallModal';
 import OnboardingTip from '../components/OnboardingTip';
+import InfoModal, { InfoHighlightBox, InfoParagraph, InfoDivider, InfoSection } from '../components/InfoModal';
+import WeeklyActivityDots from '../components/WeeklyActivityDots';
 import {useOnboarding} from '../hooks/useOnboarding';
 import type {TabScreenProps} from '../navigation/types';
 
@@ -92,6 +102,13 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   // Journal Mode Tab State
   type JournalMode = 'gratitude' | 'inkblot' | 'full';
   const [activeMode, setActiveMode] = useState<JournalMode>('gratitude');
+
+  // Info Modal State
+  const [showGratitudeInfo, setShowGratitudeInfo] = useState(false);
+  const [showInkblotInfo, setShowInkblotInfo] = useState(false);
+
+  // Activity dots refresh trigger (increment after saving to refresh dots)
+  const [activityRefreshTrigger, setActivityRefreshTrigger] = useState(0);
 
   // Gratitude Section State (3 items per research)
   const [gratitude1, setGratitude1] = useState('');
@@ -156,6 +173,56 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   const [selectedPractitionerId, setSelectedPractitionerId] = useState<string>('');
   const [practitioners, setPractitioners] = useState<Array<{id: string; name: string; email: string}>>([]);
   const [loadingPractitioners, setLoadingPractitioners] = useState(false);
+
+  // Tag state
+  const [entryTags, setEntryTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [showTagInput, setShowTagInput] = useState(false);
+  const [userTagLibrary, setUserTagLibrary] = useState<string[]>([]);
+
+  // Load user's tag library on mount
+  useEffect(() => {
+    const loadUserTags = async () => {
+      const user = auth().currentUser;
+      if (!user) return;
+      try {
+        const userDoc = await firestore().collection('users').doc(user.uid).get();
+        if (userDoc.exists && userDoc.data()?.userTags) {
+          setUserTagLibrary(userDoc.data()?.userTags || []);
+        }
+      } catch (error) {
+        console.warn('Could not load user tags:', error);
+      }
+    };
+    loadUserTags();
+  }, []);
+
+  // Add tag to entry
+  const addTag = (tag: string) => {
+    const normalized = tag.toLowerCase().trim().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-');
+    if (!normalized || normalized.length < 2 || entryTags.includes(normalized)) {
+      setTagInput('');
+      return;
+    }
+    setEntryTags([...entryTags, normalized]);
+    
+    // Add to library if new
+    if (!userTagLibrary.includes(normalized)) {
+      const newLibrary = [...userTagLibrary, normalized].sort();
+      setUserTagLibrary(newLibrary);
+      // Save to Firestore
+      const user = auth().currentUser;
+      if (user) {
+        firestore().collection('users').doc(user.uid).update({ userTags: newLibrary });
+      }
+    }
+    setTagInput('');
+  };
+
+  // Remove tag from entry
+  const removeTag = (tag: string) => {
+    setEntryTags(entryTags.filter(t => t !== tag));
+  };
 
   // AI gating helper - checks access and shows appropriate message
   const checkAndUseAI = async (featureName: string): Promise<boolean> => {
@@ -268,25 +335,63 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       const userDoc = await firestore().collection('users').doc(user.uid).get();
       const userData = userDoc.data();
       
-      if (!userData?.practitioners || userData.practitioners.length === 0) {
-        setPractitioners([]);
-        return;
+      const loadedPractitioners: Array<{id: string; name: string; email: string}> = [];
+      
+      // Check for connectedPractitioner (new format from beta assignment / Settings connection)
+      if (userData?.connectedPractitioner) {
+        const connected = userData.connectedPractitioner;
+        console.log('[JournalScreen] Found connectedPractitioner:', connected);
+        if (connected.practitionerId) {
+          try {
+            const coachDoc = await firestore().collection('users').doc(connected.practitionerId).get();
+            if (coachDoc.exists) {
+              const coachData = coachDoc.data();
+              loadedPractitioners.push({
+                id: connected.practitionerId,
+                name: coachData?.displayName || connected.name || 'Coach',
+                email: coachData?.email || connected.email || '',
+              });
+            } else {
+              // Fallback to data stored in connectedPractitioner
+              loadedPractitioners.push({
+                id: connected.practitionerId,
+                name: connected.name || 'Coach',
+                email: connected.email || '',
+              });
+            }
+          } catch (err) {
+            console.log('[JournalScreen] Error fetching coach:', err);
+            // Fallback to data stored in connectedPractitioner
+            loadedPractitioners.push({
+              id: connected.practitionerId,
+              name: connected.name || 'Coach',
+              email: connected.email || '',
+            });
+          }
+        }
       }
+      
+      // Also check legacy practitioners array format
+      if (userData?.practitioners && userData.practitioners.length > 0) {
+        const practitionerDocs = await Promise.all(
+          userData.practitioners.map((practId: string) =>
+            firestore().collection('users').doc(practId).get()
+          )
+        );
 
-      // Load practitioner details
-      const practitionerDocs = await Promise.all(
-        userData.practitioners.map((practId: string) =>
-          firestore().collection('practitioners').doc(practId).get()
-        )
-      );
-
-      const loadedPractitioners = practitionerDocs
-        .filter(doc => doc.exists)
-        .map(doc => ({
-          id: doc.id,
-          name: doc.data()?.displayName || doc.data()?.email || 'Coach',
-          email: doc.data()?.email || '',
-        }));
+        practitionerDocs
+          .filter(doc => doc.exists)
+          .forEach(doc => {
+            // Avoid duplicates if already added from connectedPractitioner
+            if (!loadedPractitioners.find(p => p.id === doc.id)) {
+              loadedPractitioners.push({
+                id: doc.id,
+                name: doc.data()?.displayName || doc.data()?.email || 'Coach',
+                email: doc.data()?.email || '',
+              });
+            }
+          });
+      }
 
       setPractitioners(loadedPractitioners);
       
@@ -305,8 +410,14 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   
   // Set up Voice recognition listeners
   useEffect(() => {
+    // Skip if Voice module is not available
+    if (!Voice) {
+      console.warn('Voice module not available - voice features disabled');
+      return;
+    }
+
     // Handle final speech results
-    Voice.onSpeechResults = (e: SpeechResultsEvent) => {
+    Voice.onSpeechResults = (e: any) => {
       console.log('🎙️ Speech results:', e.value);
       if (e.value && e.value[0]) {
         setVoiceText(e.value[0]);
@@ -314,14 +425,14 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
     };
 
     // Handle partial results (while speaking)
-    Voice.onSpeechPartialResults = (e: SpeechResultsEvent) => {
+    Voice.onSpeechPartialResults = (e: any) => {
       if (e.value && e.value[0]) {
         setVoicePartialText(e.value[0]);
       }
     };
 
     // Handle speech errors
-    Voice.onSpeechError = (e: SpeechErrorEvent) => {
+    Voice.onSpeechError = (e: any) => {
       console.error('Speech error:', e.error);
       setIsRecording(false);
       // Don't show alert for common "no speech" errors
@@ -367,6 +478,11 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   const handleStartRecording = async () => {
     console.log('🎙️ Starting voice recognition...');
     
+    if (!Voice) {
+      Alert.alert('Voice Unavailable', 'Voice recognition is not available on this device.');
+      return;
+    }
+    
     const hasPermission = await requestMicrophonePermission();
     if (!hasPermission) {
       Alert.alert('Permission Denied', 'Microphone access is required for InkOutLoud.');
@@ -388,6 +504,8 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   };
 
   const handleStopRecording = async () => {
+    if (!Voice) return;
+    
     try {
       await Voice.stop();
       setIsRecording(false);
@@ -698,9 +816,17 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       // Initialize tags array for auto-generated tags
       const tagsArray: string[] = [];
       
+      // Add user-selected tags first
+      entryTags.forEach(tag => {
+        if (!tagsArray.includes(tag)) {
+          tagsArray.push(tag);
+        }
+      });
+      
       // Add manifest tags if manifest data exists
       if (hasManifestData) {
-        tagsArray.push('manifest', 'manifesting');
+        if (!tagsArray.includes('manifest')) tagsArray.push('manifest');
+        if (!tagsArray.includes('manifesting')) tagsArray.push('manifesting');
         const today = new Date().toISOString().split('T')[0];
         tagsArray.push(`manifestDate:${today}`);
       }
@@ -804,6 +930,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         : 'Journal entry saved successfully!';
       Alert.alert('Success', successMessage);
 
+      // Refresh activity dots
+      setActivityRefreshTrigger(prev => prev + 1);
+
       // Clear form after successful save
       setJournalEntry('');
       setGeneratedPrompt('');
@@ -815,7 +944,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       setSendToPractitioner(false);
       setSelectedPractitionerId(practitioners.length > 0 ? practitioners[0].id : '');
       setAttachments([]);
-      setAttachments([]);
+      setEntryTags([]);
+      setTagInput('');
+      setShowTagInput(false);
     } catch (error: any) {
       console.error('Error saving entry:', error);
       Alert.alert('Error', 'Failed to save entry. Please try again.');
@@ -858,6 +989,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 
       Alert.alert('🙏 Gratitude Saved!', 'Your gratitude entry has been saved.');
 
+      // Refresh activity dots
+      setActivityRefreshTrigger(prev => prev + 1);
+
       // Clear form
       setGratitude1('');
       setGratitude2('');
@@ -898,6 +1032,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 
       Alert.alert('⚡ InkBlot Saved!', 'Your quick thought has been captured.');
 
+      // Refresh activity dots
+      setActivityRefreshTrigger(prev => prev + 1);
+
       // Clear form
       setInkblotText('');
     } catch (error: any) {
@@ -910,6 +1047,11 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 
   // ==================== INKBLOT VOICE HANDLER ====================
   const handleInkblotVoiceToggle = async () => {
+    if (!Voice) {
+      Alert.alert('Voice Unavailable', 'Voice recognition is not available on this device.');
+      return;
+    }
+    
     if (inkblotRecording) {
       // Stop recording
       try {
@@ -974,10 +1116,15 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           </TouchableOpacity>
         </View>
 
+        {/* Weekly Activity Dots */}
+        <WeeklyActivityDots refreshTrigger={activityRefreshTrigger} />
+
         {/* ================== GRATITUDE MODE ================== */}
         {activeMode === 'gratitude' && (
           <View style={styles.modeContent}>
-            <Text style={styles.modeTitle}>What are you grateful for today?</Text>
+            <TouchableOpacity onPress={() => setShowGratitudeInfo(true)}>
+              <Text style={[styles.modeTitle, styles.modeTitleClickable]}>What are you grateful for today?</Text>
+            </TouchableOpacity>
             <Text style={styles.modeSubtitle}>
               Research shows listing 3+ gratitudes improves well-being, sleep, and relationships.
             </Text>
@@ -1036,7 +1183,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         {/* ================== INKBLOT MODE ================== */}
         {activeMode === 'inkblot' && (
           <View style={styles.modeContent}>
-            <Text style={styles.modeTitle}>Quick thought? Drop an InkBlot.</Text>
+            <TouchableOpacity onPress={() => setShowInkblotInfo(true)}>
+              <Text style={[styles.modeTitle, styles.modeTitleClickable]}>Quick thought? Drop an InkBlot.</Text>
+            </TouchableOpacity>
             <Text style={styles.modeSubtitle}>
               Capture a moment, feeling, or fleeting thought in seconds.
             </Text>
@@ -1216,7 +1365,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         <TextInput
           style={styles.textArea}
           placeholder="Start writing your thoughts here..."
-          placeholderTextColor="#93A5A8"
+          placeholderTextColor={colors.fontMuted}
           value={journalEntry}
           onChangeText={setJournalEntry}
           multiline
@@ -1341,6 +1490,72 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         {/* Divider */}
         <View style={styles.divider} />
 
+        {/* Tag Input Section */}
+        <TouchableOpacity
+          style={styles.collapsibleHeader}
+          onPress={() => setShowTagInput(!showTagInput)}>
+          <Text style={styles.collapsibleHeaderText}>🏷️ Add Tags</Text>
+          <Text style={styles.collapsibleToggle}>{showTagInput ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+
+        {showTagInput && (
+          <View style={styles.tagSection}>
+            {/* Display selected tags */}
+            {entryTags.length > 0 && (
+              <View style={styles.tagChipsContainer}>
+                {entryTags.map((tag) => (
+                  <View key={tag} style={styles.tagChip}>
+                    <Text style={styles.tagChipText}>{tag}</Text>
+                    <TouchableOpacity onPress={() => removeTag(tag)}>
+                      <Text style={styles.tagChipRemove}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+
+            {/* Tag input */}
+            <View style={styles.tagInputRow}>
+              <TextInput
+                style={styles.tagInputField}
+                value={tagInput}
+                onChangeText={setTagInput}
+                placeholder="Type a tag..."
+                placeholderTextColor={colors.fontMuted}
+                onSubmitEditing={() => addTag(tagInput)}
+                returnKeyType="done"
+              />
+              <TouchableOpacity
+                style={styles.tagAddButton}
+                onPress={() => addTag(tagInput)}>
+                <Text style={styles.tagAddButtonText}>Add</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Suggestions from library */}
+            {tagInput.length > 0 && userTagLibrary.filter(t => 
+              t.includes(tagInput.toLowerCase()) && !entryTags.includes(t)
+            ).length > 0 && (
+              <View style={styles.tagSuggestions}>
+                {userTagLibrary
+                  .filter(t => t.includes(tagInput.toLowerCase()) && !entryTags.includes(t))
+                  .slice(0, 5)
+                  .map((tag) => (
+                    <TouchableOpacity
+                      key={tag}
+                      style={styles.tagSuggestionItem}
+                      onPress={() => addTag(tag)}>
+                      <Text style={styles.tagSuggestionText}>{tag}</Text>
+                    </TouchableOpacity>
+                  ))}
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Divider */}
+        <View style={styles.divider} />
+
         {/* Send to Coach */}
         <View style={styles.sectionLabelRow}>
           <Text style={styles.checkboxLabel}>📬 Send to Coach</Text>
@@ -1388,7 +1603,15 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
                   </Text>
                 </TouchableOpacity>
               </View>
+            ) : practitioners.length === 1 ? (
+              // Single coach - just show the name, no dropdown needed
+              <View style={styles.singleCoachContainer}>
+                <Text style={styles.singleCoachText}>
+                  ✅ Will be sent to {practitioners[0].name}
+                </Text>
+              </View>
             ) : (
+              // Multiple coaches - show picker
               <View>
                 <Text style={styles.pickerLabel}>Select Coach:</Text>
                 <View style={styles.pickerContainer}>
@@ -1443,6 +1666,97 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         actionLabel={getTip('journal_intro').actionLabel}
         onDismiss={handleDismissOnboarding}
       />
+
+      {/* Gratitude Info Modal */}
+      <InfoModal
+        visible={showGratitudeInfo}
+        onClose={() => setShowGratitudeInfo(false)}
+        title="🙏 The Science of Gratitude"
+        subtitle="A daily practice that rewires your brain for well-being."
+        footerText="Notice. Appreciate. Grow."
+      >
+        <InfoSection title="Why Gratitude Works">
+          <InfoParagraph>
+            Decades of research from positive psychology shows that regularly noting what you're grateful for isn't just "thinking happy thoughts"—it physically changes your brain. Studies from UC Davis, UC Berkeley, and leading psychology labs have found consistent benefits.
+          </InfoParagraph>
+        </InfoSection>
+
+        <InfoDivider />
+
+        <InfoSection title="What the Research Shows">
+          <InfoHighlightBox title="Neural Rewiring" emoji="🧠">
+            Practicing gratitude activates the hypothalamus and dopamine pathways. Over time, your brain becomes better at noticing positive experiences—a phenomenon called "neural plasticity."
+          </InfoHighlightBox>
+
+          <InfoHighlightBox title="Better Sleep" emoji="😴">
+            Studies show that writing down three gratitudes before bed helps people fall asleep faster and sleep longer. The mind shifts from rumination to appreciation.
+          </InfoHighlightBox>
+
+          <InfoHighlightBox title="Improved Resilience" emoji="💪">
+            People who practice gratitude regularly cope better with stress and adversity. They don't ignore problems—they develop a more balanced perspective.
+          </InfoHighlightBox>
+
+          <InfoHighlightBox title="Stronger Relationships" emoji="❤️">
+            Expressing appreciation strengthens social bonds. Grateful people report more satisfying relationships and feel more connected to others.
+          </InfoHighlightBox>
+        </InfoSection>
+
+        <InfoDivider />
+
+        <InfoSection title="Why Three Gratitudes?">
+          <InfoParagraph>
+            Research by Dr. Robert Emmons found that listing three specific things you're grateful for is the sweet spot—enough to create impact without becoming a chore. Specificity matters: "I'm grateful my friend texted to check on me" works better than "I'm grateful for friends."
+          </InfoParagraph>
+        </InfoSection>
+      </InfoModal>
+
+      {/* InkBlot Info Modal */}
+      <InfoModal
+        visible={showInkblotInfo}
+        onClose={() => setShowInkblotInfo(false)}
+        title="⚡ InkBlot: Quick Capture"
+        subtitle="Get it out of your head before it disappears."
+        footerText="Think it. Capture it. Free yourself."
+      >
+        <InfoSection title="The Power of Quick Capture">
+          <InfoParagraph>
+            Not every thought needs a polished journal entry. InkBlot is for those fleeting ideas, sudden realizations, or quick emotional check-ins that deserve to be saved but don't require ceremony.
+          </InfoParagraph>
+        </InfoSection>
+
+        <InfoDivider />
+
+        <InfoSection title="Why Quick Capture Matters">
+          <InfoHighlightBox title="Reduce Cognitive Load" emoji="🧠">
+            Psychologist David Allen calls this "closing open loops." When you capture a thought externally, your brain can stop holding onto it—freeing mental space for other things.
+          </InfoHighlightBox>
+
+          <InfoHighlightBox title="Catch Insights" emoji="💡">
+            Research shows we forget up to 40% of new information within 20 minutes. Those shower thoughts, midnight realizations, and random connections? Gone unless you capture them quickly.
+          </InfoHighlightBox>
+
+          <InfoHighlightBox title="Process Emotions" emoji="🌊">
+            Sometimes you just need to name what you're feeling—even if it's just "feeling weird today" or "surprisingly hopeful right now." Brief emotional check-ins create self-awareness over time.
+          </InfoHighlightBox>
+
+          <InfoHighlightBox title="Build Momentum" emoji="✨">
+            A 30-second InkBlot entry is infinitely more valuable than the perfect journal entry you never write. Small consistent actions beat sporadic perfection.
+          </InfoHighlightBox>
+        </InfoSection>
+
+        <InfoDivider />
+
+        <InfoSection title="How to Use InkBlot">
+          <InfoParagraph>
+            • Type or speak whatever's on your mind (up to 500 characters){'\n'}
+            • Don't overthink it—messy is fine, incomplete is fine{'\n'}
+            • Save and move on—you can always revisit in Past Entries
+          </InfoParagraph>
+          <InfoParagraph>
+            Think of InkBlot entries as seeds. Some will grow into bigger reflections later. Others simply needed to be planted and acknowledged.
+          </InfoParagraph>
+        </InfoSection>
+      </InfoModal>
     </ScrollView>
   );
 };
@@ -1496,6 +1810,12 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.fontMain,
     textAlign: 'center',
     marginBottom: spacing.sm,
+  },
+  modeTitleClickable: {
+    // Subtle underline effect to indicate it's tappable
+    textDecorationLine: 'underline',
+    textDecorationColor: colors.brandPrimary,
+    textDecorationStyle: 'dotted',
   },
   modeSubtitle: {
     fontFamily: fontFamily.body,
@@ -1962,6 +2282,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.sm,
     lineHeight: 22,
   },
+  singleCoachContainer: {
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.base,
+  },
+  singleCoachText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.brandPrimary,
+  },
   goToSettingsButton: {
     backgroundColor: colors.brandPrimary,
     paddingVertical: spacing.sm,
@@ -2007,6 +2336,99 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.brandPrimary,
     marginBottom: spacing.base,
     fontStyle: 'italic',
+  },
+  
+  // ==================== TAG STYLES ====================
+  collapsibleHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.xs,
+  },
+  collapsibleHeaderText: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+  },
+  collapsibleToggle: {
+    fontSize: fontSize.sm,
+    color: colors.fontMuted,
+  },
+  tagSection: {
+    marginBottom: spacing.base,
+  },
+  tagChipsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  tagChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.bgMuted,
+    paddingVertical: spacing.xs,
+    paddingHorizontal: spacing.sm,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  tagChipText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+    marginRight: spacing.xs,
+  },
+  tagChipRemove: {
+    fontSize: fontSize.lg,
+    color: colors.fontMuted,
+    fontWeight: '300',
+  },
+  tagInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  tagInputField: {
+    flex: 1,
+    fontFamily: fontFamily.body,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+  },
+  tagAddButton: {
+    backgroundColor: colors.brandPrimary,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.base,
+    borderRadius: borderRadius.md,
+  },
+  tagAddButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.sm,
+  },
+  tagSuggestions: {
+    marginTop: spacing.xs,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    overflow: 'hidden',
+  },
+  tagSuggestionItem: {
+    padding: spacing.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.borderLight,
+  },
+  tagSuggestionText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
   },
 });
 

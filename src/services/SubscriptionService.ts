@@ -183,63 +183,59 @@ class SubscriptionService {
 
   /**
    * Get current subscription status
-   * IMPORTANT: Checks both RevenueCat AND Firestore for admin overrides/beta status
+   * PRIORITY ORDER:
+   * 1. Firestore admin override / beta tier (trust backend)
+   * 2. RevenueCat (paying customers)
+   * 3. Free tier
    */
   async getSubscriptionStatus(): Promise<SubscriptionStatus> {
     try {
       const userId = auth().currentUser?.uid;
       
-      // Get RevenueCat status
-      const customerInfo = await Purchases.getCustomerInfo();
-      const rcStatus = this.parseSubscriptionStatus(customerInfo);
-      
-      // If RevenueCat says Plus or Connect, use that (actual paying customer)
-      if (rcStatus.tier !== 'free') {
-        return rcStatus;
-      }
-      
-      // RevenueCat says free - check Firestore for admin override or beta status
+      // FIRST: Check Firestore for admin override or backend-set tier
+      // This takes priority because admin/beta overrides should work without RevenueCat
       if (userId) {
         try {
           const userDoc = await firestore().collection('users').doc(userId).get();
           const userData = userDoc.data();
           
           if (userData) {
-            const hasAdminOverride = userData.betaProgress?.tierOverride?.tier;
+            const adminOverrideTier = userData.betaProgress?.tierOverride?.tier;
+            const firestoreTier = userData.subscriptionTier;
             const specialCode = userData.special_code;
             const isBetaTester = ['alpha', 'beta'].includes(specialCode);
-            const firestoreTier = userData.subscriptionTier;
             
-            // Check for admin override tier
-            if (hasAdminOverride && ['plus', 'connect'].includes(hasAdminOverride)) {
-              console.log('🔓 Using admin override tier:', hasAdminOverride);
+            // Check for admin override tier (highest priority)
+            if (adminOverrideTier && ['plus', 'connect'].includes(adminOverrideTier)) {
+              console.log('🔓 Using admin override tier:', adminOverrideTier);
               return {
-                tier: hasAdminOverride as SubscriptionTier,
+                tier: adminOverrideTier as SubscriptionTier,
                 isActive: true,
                 willRenew: false,
-                platform: 'stripe', // Admin override
+                platform: 'stripe',
               };
             }
             
-            // Check for beta tester status
+            // Check Firestore subscriptionTier directly (beta users, admin-set)
+            // FIXED: Trust the tier if set, don't require subscriptionStatus
+            if (firestoreTier && ['plus', 'connect'].includes(firestoreTier)) {
+              console.log('🔓 Using Firestore tier:', firestoreTier);
+              return {
+                tier: firestoreTier as SubscriptionTier,
+                isActive: true, // If tier is set, it's active
+                willRenew: userData.subscriptionWillRenew || false,
+                platform: userData.subscriptionPlatform || 'stripe',
+              };
+            }
+            
+            // Check for beta tester status (grants Plus)
             if (isBetaTester) {
               console.log('🔓 Beta tester detected, granting Plus access');
               return {
                 tier: 'plus',
                 isActive: true,
                 willRenew: false,
-                platform: 'stripe', // Beta access
-              };
-            }
-            
-            // Check Firestore subscriptionTier (may be set by web/admin)
-            if (firestoreTier && ['plus', 'connect'].includes(firestoreTier)) {
-              console.log('🔓 Using Firestore tier:', firestoreTier);
-              return {
-                tier: firestoreTier as SubscriptionTier,
-                isActive: userData.subscriptionStatus === 'active',
-                willRenew: userData.subscriptionWillRenew || false,
-                platform: userData.subscriptionPlatform || 'stripe',
+                platform: 'stripe',
               };
             }
           }
@@ -248,8 +244,26 @@ class SubscriptionService {
         }
       }
       
-      // Default to RevenueCat status (free)
-      return rcStatus;
+      // SECOND: Check RevenueCat (actual paying customers)
+      try {
+        const customerInfo = await Purchases.getCustomerInfo();
+        const rcStatus = this.parseSubscriptionStatus(customerInfo);
+        
+        if (rcStatus.tier !== 'free') {
+          console.log('💳 Using RevenueCat tier:', rcStatus.tier);
+          return rcStatus;
+        }
+      } catch (rcError) {
+        console.warn('⚠️ RevenueCat check failed:', rcError);
+      }
+      
+      // Default to free tier
+      console.log('📱 Defaulting to free tier');
+      return {
+        tier: 'free',
+        isActive: true,
+        willRenew: false,
+      };
       
     } catch (error) {
       console.error('❌ Failed to get subscription status:', error);

@@ -473,7 +473,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           <TextInput
             style={styles.input}
             placeholder="Full Name"
-            placeholderTextColor="#93A5A8"
+            placeholderTextColor={colors.fontMuted}
             value={displayName}
             onChangeText={setDisplayName}
             autoCapitalize="words"
@@ -484,7 +484,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         <TextInput
           style={styles.input}
           placeholder="Email"
-          placeholderTextColor="#93A5A8"
+          placeholderTextColor={colors.fontMuted}
           value={email}
           onChangeText={setEmail}
           autoCapitalize="none"
@@ -495,7 +495,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         <TextInput
           style={styles.input}
           placeholder="Password"
-          placeholderTextColor="#93A5A8"
+          placeholderTextColor={colors.fontMuted}
           value={password}
           onChangeText={setPassword}
           secureTextEntry
@@ -506,7 +506,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           <TextInput
             style={styles.input}
             placeholder="Confirm Password"
-            placeholderTextColor="#93A5A8"
+            placeholderTextColor={colors.fontMuted}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
@@ -558,7 +558,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           onPress={isSignUp ? handleEmailSignUp : handleEmailSignIn}
           disabled={loading}>
           {loading ? (
-            <ActivityIndicator color="#F0FDFA" />
+            <ActivityIndicator color={colors.fontWhite} />
           ) : (
             <Text style={styles.submitButtonText}>
               {isSignUp ? 'Sign Up' : 'Log In'}

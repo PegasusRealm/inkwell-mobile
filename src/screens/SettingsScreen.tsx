@@ -28,6 +28,77 @@ import {useOnboarding} from '../hooks/useOnboarding';
 import PaywallModal from '../components/PaywallModal';
 import notificationService, {PushNotificationPreferences} from '../services/notificationService';
 
+// Twilio-supported country codes (major regions)
+const COUNTRY_CODES = [
+  { code: '+1', country: 'US/Canada', flag: '🇺🇸' },
+  { code: '+44', country: 'UK', flag: '🇬🇧' },
+  { code: '+61', country: 'Australia', flag: '🇦🇺' },
+  { code: '+64', country: 'New Zealand', flag: '🇳🇿' },
+  { code: '+353', country: 'Ireland', flag: '🇮🇪' },
+  { code: '+49', country: 'Germany', flag: '🇩🇪' },
+  { code: '+33', country: 'France', flag: '🇫🇷' },
+  { code: '+34', country: 'Spain', flag: '🇪🇸' },
+  { code: '+39', country: 'Italy', flag: '🇮🇹' },
+  { code: '+31', country: 'Netherlands', flag: '🇳🇱' },
+  { code: '+32', country: 'Belgium', flag: '🇧🇪' },
+  { code: '+41', country: 'Switzerland', flag: '🇨🇭' },
+  { code: '+43', country: 'Austria', flag: '🇦🇹' },
+  { code: '+46', country: 'Sweden', flag: '🇸🇪' },
+  { code: '+47', country: 'Norway', flag: '🇳🇴' },
+  { code: '+45', country: 'Denmark', flag: '🇩🇰' },
+  { code: '+358', country: 'Finland', flag: '🇫🇮' },
+  { code: '+48', country: 'Poland', flag: '🇵🇱' },
+  { code: '+81', country: 'Japan', flag: '🇯🇵' },
+  { code: '+82', country: 'South Korea', flag: '🇰🇷' },
+  { code: '+65', country: 'Singapore', flag: '🇸🇬' },
+  { code: '+852', country: 'Hong Kong', flag: '🇭🇰' },
+  { code: '+91', country: 'India', flag: '🇮🇳' },
+  { code: '+971', country: 'UAE', flag: '🇦🇪' },
+  { code: '+972', country: 'Israel', flag: '🇮🇱' },
+  { code: '+27', country: 'South Africa', flag: '🇿🇦' },
+  { code: '+52', country: 'Mexico', flag: '🇲🇽' },
+  { code: '+55', country: 'Brazil', flag: '🇧🇷' },
+  { code: '+54', country: 'Argentina', flag: '🇦🇷' },
+  { code: '+56', country: 'Chile', flag: '🇨🇱' },
+];
+
+// Major world timezones (~25 grouped by region)
+const TIMEZONES = [
+  // Americas
+  { value: 'Pacific/Honolulu', label: '🇺🇸 Hawaii (HST)', region: 'Americas' },
+  { value: 'America/Anchorage', label: '🇺🇸 Alaska (AKST)', region: 'Americas' },
+  { value: 'America/Los_Angeles', label: '🇺🇸 Pacific Time (PST)', region: 'Americas' },
+  { value: 'America/Denver', label: '🇺🇸 Mountain Time (MST)', region: 'Americas' },
+  { value: 'America/Phoenix', label: '🇺🇸 Arizona (MST)', region: 'Americas' },
+  { value: 'America/Chicago', label: '🇺🇸 Central Time (CST)', region: 'Americas' },
+  { value: 'America/New_York', label: '🇺🇸 Eastern Time (EST)', region: 'Americas' },
+  { value: 'America/Toronto', label: '🇨🇦 Toronto (EST)', region: 'Americas' },
+  { value: 'America/Mexico_City', label: '🇲🇽 Mexico City (CST)', region: 'Americas' },
+  { value: 'America/Sao_Paulo', label: '🇧🇷 São Paulo (BRT)', region: 'Americas' },
+  { value: 'America/Argentina/Buenos_Aires', label: '🇦🇷 Buenos Aires (ART)', region: 'Americas' },
+  // Europe
+  { value: 'Europe/London', label: '🇬🇧 London (GMT)', region: 'Europe' },
+  { value: 'Europe/Dublin', label: '🇮🇪 Dublin (GMT)', region: 'Europe' },
+  { value: 'Europe/Paris', label: '🇫🇷 Paris (CET)', region: 'Europe' },
+  { value: 'Europe/Berlin', label: '🇩🇪 Berlin (CET)', region: 'Europe' },
+  { value: 'Europe/Amsterdam', label: '🇳🇱 Amsterdam (CET)', region: 'Europe' },
+  { value: 'Europe/Rome', label: '🇮🇹 Rome (CET)', region: 'Europe' },
+  { value: 'Europe/Madrid', label: '🇪🇸 Madrid (CET)', region: 'Europe' },
+  { value: 'Europe/Stockholm', label: '🇸🇪 Stockholm (CET)', region: 'Europe' },
+  // Asia & Middle East
+  { value: 'Asia/Dubai', label: '🇦🇪 Dubai (GST)', region: 'Asia' },
+  { value: 'Asia/Kolkata', label: '🇮🇳 India (IST)', region: 'Asia' },
+  { value: 'Asia/Singapore', label: '🇸🇬 Singapore (SGT)', region: 'Asia' },
+  { value: 'Asia/Hong_Kong', label: '🇭🇰 Hong Kong (HKT)', region: 'Asia' },
+  { value: 'Asia/Tokyo', label: '🇯🇵 Tokyo (JST)', region: 'Asia' },
+  { value: 'Asia/Seoul', label: '🇰🇷 Seoul (KST)', region: 'Asia' },
+  // Pacific
+  { value: 'Australia/Sydney', label: '🇦🇺 Sydney (AEDT)', region: 'Pacific' },
+  { value: 'Australia/Melbourne', label: '🇦🇺 Melbourne (AEDT)', region: 'Pacific' },
+  { value: 'Australia/Perth', label: '🇦🇺 Perth (AWST)', region: 'Pacific' },
+  { value: 'Pacific/Auckland', label: '🇳🇿 Auckland (NZDT)', region: 'Pacific' },
+];
+
 export default function SettingsScreen({
   navigation,
 }: RootStackScreenProps<'Settings'>) {
@@ -39,7 +110,7 @@ export default function SettingsScreen({
   
   const [practitioners, setPractitioners] = useState<Array<{id: string; name: string; email: string}>>([]);
   const [loadingPractitioners, setLoadingPractitioners] = useState(true);
-  const [approvedPractitioners, setApprovedPractitioners] = useState<Array<{id: string; name: string; email: string; specialties?: string[]}>>([]);
+  const [approvedPractitioners, setApprovedPractitioners] = useState<Array<{id: string; name: string; email: string; bio?: string; credentials?: string; practiceLocation?: string; specialties?: string[]}>>([]);
   const [loadingApproved, setLoadingApproved] = useState(true);
   const [selectedApprovedId, setSelectedApprovedId] = useState('');
   const [addModalVisible, setAddModalVisible] = useState(false);
@@ -55,6 +126,8 @@ export default function SettingsScreen({
   const [paywallVisible, setPaywallVisible] = useState(false);
   
   // SMS Notifications state
+  const [countryCode, setCountryCode] = useState('+1');
+  const [localPhoneNumber, setLocalPhoneNumber] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [smsWishMilestones, setSmsWishMilestones] = useState(true);
@@ -64,6 +137,27 @@ export default function SettingsScreen({
   const [smsWeeklyInsights, setSmsWeeklyInsights] = useState(false);
   const [savingSms, setSavingSms] = useState(false);
   const [selectedTimezone, setSelectedTimezone] = useState('America/New_York');
+  
+  // Format phone number as user types (XXX) XXX-XXXX
+  const formatPhoneNumber = (text: string): string => {
+    // Remove all non-digits
+    const cleaned = text.replace(/\D/g, '');
+    
+    // Apply formatting based on length
+    if (cleaned.length <= 3) {
+      return cleaned;
+    } else if (cleaned.length <= 6) {
+      return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3)}`;
+    } else {
+      return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6, 10)}`;
+    }
+  };
+  
+  // Handle phone input with formatting
+  const handlePhoneChange = (text: string) => {
+    const formatted = formatPhoneNumber(text);
+    setLocalPhoneNumber(formatted);
+  };
   
   // Push Notifications state
   const [pushPermissionStatus, setPushPermissionStatus] = useState<'authorized' | 'denied' | 'not_determined'>('not_determined');
@@ -151,26 +245,71 @@ export default function SettingsScreen({
     try {
       const userDoc = await firestore().collection('users').doc(user.uid).get();
       const userData = userDoc.data();
+      console.log('[loadPractitioners] User data:', JSON.stringify({
+        connectedPractitioner: userData?.connectedPractitioner,
+        practitioners: userData?.practitioners
+      }));
       
-      if (!userData?.practitioners || userData.practitioners.length === 0) {
-        setPractitioners([]);
-        setLoadingPractitioners(false);
-        return;
+      const loadedPractitioners: Array<{id: string; name: string; email: string}> = [];
+      
+      // Check for connectedPractitioner (new format from beta assignment)
+      if (userData?.connectedPractitioner) {
+        const connected = userData.connectedPractitioner;
+        console.log('[loadPractitioners] Found connectedPractitioner:', connected);
+        // Try to get coach details from users collection
+        if (connected.practitionerId) {
+          try {
+            const coachDoc = await firestore().collection('users').doc(connected.practitionerId).get();
+            console.log('[loadPractitioners] Coach doc exists:', coachDoc.exists());
+            if (coachDoc.exists()) {
+              const coachData = coachDoc.data();
+              loadedPractitioners.push({
+                id: connected.practitionerId,
+                name: coachData?.displayName || connected.name || 'Coach',
+                email: coachData?.email || connected.email || '',
+              });
+            } else {
+              // Fallback to data stored in connectedPractitioner
+              loadedPractitioners.push({
+                id: connected.practitionerId,
+                name: connected.name || 'Coach',
+                email: connected.email || '',
+              });
+            }
+          } catch (err) {
+            console.log('[loadPractitioners] Error fetching coach:', err);
+            // Fallback to data stored in connectedPractitioner
+            loadedPractitioners.push({
+              id: connected.practitionerId,
+              name: connected.name || 'Coach',
+              email: connected.email || '',
+            });
+          }
+        }
       }
+      
+      // Also check legacy practitioners array format
+      if (userData?.practitioners && userData.practitioners.length > 0) {
+        const practitionerDocs = await Promise.all(
+          userData.practitioners.map((practId: string) =>
+            // Try users collection first (coaches are users), then practitioners collection
+            firestore().collection('users').doc(practId).get()
+          )
+        );
 
-      const practitionerDocs = await Promise.all(
-        userData.practitioners.map((practId: string) =>
-          firestore().collection('practitioners').doc(practId).get()
-        )
-      );
-
-      const loadedPractitioners = practitionerDocs
-        .filter(doc => doc.exists)
-        .map(doc => ({
-          id: doc.id,
-          name: doc.data()?.displayName || doc.data()?.email || 'Coach',
-          email: doc.data()?.email || '',
-        }));
+        practitionerDocs
+          .filter(doc => doc.exists())
+          .forEach(doc => {
+            // Avoid duplicates
+            if (!loadedPractitioners.find(p => p.id === doc.id)) {
+              loadedPractitioners.push({
+                id: doc.id,
+                name: doc.data()?.displayName || doc.data()?.email || 'Coach',
+                email: doc.data()?.email || '',
+              });
+            }
+          });
+      }
 
       setPractitioners(loadedPractitioners);
     } catch (error) {
@@ -183,16 +322,21 @@ export default function SettingsScreen({
   const loadApprovedPractitioners = async () => {
     setLoadingApproved(true);
     try {
-      // Query users collection for anyone with userRole 'coach' or accountType 'coach'
+      // Query users collection for coaches who have opted in to be publicly visible
+      // Only coaches with freeAgentOptIn: true appear in the public directory
       const snapshot = await firestore()
         .collection('users')
         .where('userRole', '==', 'coach')
+        .where('freeAgentOptIn', '==', true)
         .get();
       
       const approved = snapshot.docs.map(doc => ({
         id: doc.id,
         name: doc.data().displayName || doc.data().signupUsername || 'Coach',
         email: doc.data().email || '',
+        bio: doc.data().bio || '',
+        credentials: doc.data().credentials || '',
+        practiceLocation: doc.data().practiceLocation || '',
         specialties: doc.data().specialties || [],
       }));
       
@@ -261,6 +405,21 @@ export default function SettingsScreen({
       const phone = userData?.phoneNumber || userData?.smsPreferences?.phoneNumber || '';
       setPhoneNumber(phone);
       
+      // Parse country code from existing phone number
+      if (phone) {
+        // Find matching country code (longest match first)
+        const sortedCodes = [...COUNTRY_CODES].sort((a, b) => b.code.length - a.code.length);
+        const matchedCountry = sortedCodes.find(c => phone.startsWith(c.code));
+        if (matchedCountry) {
+          setCountryCode(matchedCountry.code);
+          setLocalPhoneNumber(phone.slice(matchedCountry.code.length));
+        } else {
+          // Default to US if no match
+          setCountryCode('+1');
+          setLocalPhoneNumber(phone.replace(/^\+/, ''));
+        }
+      }
+      
       // Timezone: prefer root level (web), fall back to smsPreferences (old mobile)
       const tz = userData?.timezone || userData?.smsPreferences?.timezone || 'America/New_York';
       setSelectedTimezone(tz);
@@ -286,28 +445,29 @@ export default function SettingsScreen({
   const saveSmsPreferences = async () => {
     if (!user) return;
 
-    // Validate phone number format
-    const phoneRegex = /^\+[1-9]\d{6,14}$/;
-    if (smsEnabled && phoneNumber && !phoneRegex.test(phoneNumber.replace(/\s/g, ''))) {
-      Alert.alert('Invalid Phone Number', 'Please enter a valid phone number with country code (e.g., +15551234567)');
+    // Combine country code + local number
+    const cleanLocalNumber = localPhoneNumber.replace(/[\s\-\(\)]/g, '');
+    const fullPhoneNumber = cleanLocalNumber ? `${countryCode}${cleanLocalNumber}` : '';
+    
+    // Validate phone number format (must have at least 6 digits after country code)
+    if (smsEnabled && cleanLocalNumber && cleanLocalNumber.length < 6) {
+      Alert.alert('Invalid Phone Number', 'Please enter a valid phone number (at least 6 digits)');
       return;
     }
 
     setSavingSms(true);
     try {
-      const cleanPhone = phoneNumber.replace(/\s/g, '');
-      
       await firestore()
         .collection('users')
         .doc(user.uid)
         .set({
           // Save at root level for web app compatibility
-          phoneNumber: cleanPhone,
+          phoneNumber: fullPhoneNumber,
           timezone: selectedTimezone,
           smsOptIn: smsEnabled,
           // Also save in smsPreferences for detailed preferences
           smsPreferences: {
-            phoneNumber: cleanPhone,
+            phoneNumber: fullPhoneNumber,
             enabled: smsEnabled,
             timezone: selectedTimezone,
             wishMilestones: smsWishMilestones,
@@ -320,6 +480,9 @@ export default function SettingsScreen({
           },
         }, { merge: true });
 
+      // Update local state with combined number
+      setPhoneNumber(fullPhoneNumber);
+      
       Alert.alert('Success', 'SMS preferences updated');
     } catch (error) {
       console.error('Error saving SMS preferences:', error);
@@ -373,9 +536,32 @@ export default function SettingsScreen({
       await savePushPreferences(true, true); // skipAlert = true, we handle it here
       
       if (tokenResult.success) {
-        Alert.alert('Success', 'Push notifications enabled!');
+        Alert.alert(
+          '✅ Push Notifications Enabled!', 
+          `Token saved successfully.\n\nToken prefix: ${tokenResult.token?.substring(0, 30)}...`
+        );
+      } else if (tokenResult.permissionStatus === 'DENIED') {
+        // Permission denied - need to go to Settings
+        setPushEnabled(false);
+        setPushPermissionStatus('denied');
+        Alert.alert(
+          'Permission Required',
+          'Push notifications are disabled in your device settings. Would you like to open Settings to enable them?',
+          [
+            { text: 'Not Now', style: 'cancel' },
+            { 
+              text: 'Open Settings', 
+              onPress: () => notificationService.openSettings()
+            }
+          ]
+        );
       } else {
-        Alert.alert('Error', 'Could not enable push notifications. Please check your device settings.');
+        // Other error (APNs not configured, etc.)
+        setPushEnabled(false);
+        Alert.alert(
+          'Push Notification Error', 
+          `Could not enable push notifications.\n\nError: ${tokenResult.error || 'Unknown error'}\n\nPermission: ${tokenResult.permissionStatus || 'unknown'}`
+        );
       }
     } else {
       // Disabling
@@ -417,6 +603,24 @@ export default function SettingsScreen({
     }
   };
 
+  // Helper: safely convert date field (handles both Firestore Timestamp and ISO string)
+  const safeToISOString = (dateField: any): string | null => {
+    if (!dateField) return null;
+    // If it's a Firestore Timestamp, call toDate()
+    if (typeof dateField.toDate === 'function') {
+      return dateField.toDate().toISOString();
+    }
+    // If it's already a string, return it
+    if (typeof dateField === 'string') {
+      return dateField;
+    }
+    // If it's a Date object
+    if (dateField instanceof Date) {
+      return dateField.toISOString();
+    }
+    return null;
+  };
+
   // Export user data function
   const handleExportData = async () => {
     if (!user) return;
@@ -448,7 +652,7 @@ export default function SettingsScreen({
         return {
           id: doc.id,
           text: data.text || '',
-          createdAt: data.createdAt?.toDate()?.toISOString() || null,
+          createdAt: safeToISOString(data.createdAt),
           promptUsed: data.promptUsed || null,
           reflectionUsed: data.reflectionUsed || null,
           tags: data.tags || [],
@@ -456,26 +660,28 @@ export default function SettingsScreen({
         };
       });
 
-      // Collect manifests
-      const manifestsSnapshot = await firestore()
+      // Collect manifest (single document per user)
+      const manifestDoc = await firestore()
         .collection('manifests')
         .doc(user.uid)
-        .collection('entries')
-        .orderBy('createdAt', 'desc')
         .get();
 
-      const manifests = manifestsSnapshot.docs.map(doc => {
-        const data = doc.data();
-        return {
-          id: doc.id,
-          date: data.date || '',
-          wish: data.wish || '',
-          outcome: data.outcome || '',
-          opposition: data.opposition || '',
-          plan: data.plan || '',
-          createdAt: data.createdAt?.toDate()?.toISOString() || null,
-        };
-      });
+      const manifests = [];
+      if (manifestDoc.exists) {
+        const data = manifestDoc.data();
+        if (data) {
+          manifests.push({
+            id: manifestDoc.id,
+            want: data.want || '',
+            imagine: data.imagine || '',
+            snags: data.snags || '',
+            howTo: data.howTo || '',
+            progress: data.progress || 0,
+            createdAt: safeToISOString(data.createdAt),
+            updatedAt: safeToISOString(data.updatedAt),
+          });
+        }
+      }
 
       // Build export data
       const exportData = {
@@ -631,22 +837,81 @@ export default function SettingsScreen({
     const selectedPractitioner = approvedPractitioners.find(p => p.id === selectedApprovedId);
     if (!selectedPractitioner || !user) return;
 
+    // Check if user already has a coach connected - enforce once-per-billing-cycle switching
+    try {
+      const userDoc = await firestore().collection('users').doc(user.uid).get();
+      const userData = userDoc.data();
+      
+      if (userData?.connectedPractitioner?.practitionerId) {
+        const lastSwitchDate = userData.lastCoachSwitchAt?.toDate?.();
+        const now = new Date();
+        
+        // Check if they've switched in the last 30 days
+        if (lastSwitchDate) {
+          const daysSinceSwitch = Math.floor((now.getTime() - lastSwitchDate.getTime()) / (1000 * 60 * 60 * 24));
+          if (daysSinceSwitch < 30) {
+            const daysRemaining = 30 - daysSinceSwitch;
+            Alert.alert(
+              'Coach Change Limit',
+              `You can switch coaches once per billing cycle. You can change coaches again in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}.`,
+            );
+            return;
+          }
+        }
+        
+        // Confirm they want to switch
+        Alert.alert(
+          'Switch Coach?',
+          `You are currently connected to ${userData.connectedPractitioner.name}. Switching to ${selectedPractitioner.name} will take effect immediately. You can only change coaches once per billing cycle.`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: 'Switch Coach', 
+              onPress: () => performCoachConnection(selectedPractitioner, true),
+            },
+          ],
+        );
+        return;
+      }
+    } catch (checkError) {
+      console.error('Error checking existing coach:', checkError);
+    }
+
+    // No existing coach, proceed with connection
+    performCoachConnection(selectedPractitioner, false);
+  };
+
+  const performCoachConnection = async (
+    selectedPractitioner: {id: string; name: string; email: string; bio?: string},
+    isSwitch: boolean
+  ) => {
+    if (!user) return;
+    
     setConnecting(true);
     try {
+      const updateData: any = {
+        connectedPractitioner: {
+          practitionerId: selectedPractitioner.id,
+          email: selectedPractitioner.email,
+          name: selectedPractitioner.name,
+          connectedAt: firestore.FieldValue.serverTimestamp(),
+          connectionType: 'approved_selection',
+        },
+        practitioners: firestore.FieldValue.arrayUnion(selectedPractitioner.id),
+      };
+      
+      // Track coach switch date if this is a switch
+      if (isSwitch) {
+        updateData.lastCoachSwitchAt = firestore.FieldValue.serverTimestamp();
+      }
+      
       await firestore()
         .collection('users')
         .doc(user.uid)
-        .set({
-          connectedPractitioner: {
-            email: selectedPractitioner.email,
-            name: selectedPractitioner.name,
-            connectedAt: firestore.FieldValue.serverTimestamp(),
-            connectionType: 'approved_selection',
-          },
-        }, { merge: true });
+        .set(updateData, { merge: true });
 
       Alert.alert(
-        'Connected!',
+        isSwitch ? 'Coach Switched!' : 'Connected!',
         `You are now connected to ${selectedPractitioner.name}. You can tag them in your journal entries.`,
       );
       
@@ -876,7 +1141,7 @@ export default function SettingsScreen({
               <Text style={styles.subscriptionLabel}>Current Plan:</Text>
               <View style={styles.subscriptionBadgeContainer}>
                 {subscriptionLoading ? (
-                  <ActivityIndicator size="small" color="#2A6972" />
+                  <ActivityIndicator size="small" color={colors.brandPrimary} />
                 ) : (
                   <View style={[
                     styles.subscriptionBadge,
@@ -961,7 +1226,7 @@ export default function SettingsScreen({
             
             {loadingApproved ? (
               <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color="#2A6972" />
+                <ActivityIndicator size="small" color={colors.brandPrimary} />
               </View>
             ) : approvedPractitioners.length === 0 ? (
               <Text style={styles.emptyText}>
@@ -979,11 +1244,31 @@ export default function SettingsScreen({
                   {approvedPractitioners.map(pract => (
                     <Picker.Item
                       key={pract.id}
-                      label={pract.name}
+                      label={`${pract.name}${pract.credentials ? ` (${pract.credentials})` : ''}`}
                       value={pract.id}
                     />
                   ))}
                 </Picker>
+                
+                {/* Show selected coach bio and details */}
+                {selectedApprovedId && (() => {
+                  const selectedCoach = approvedPractitioners.find(p => p.id === selectedApprovedId);
+                  if (!selectedCoach) return null;
+                  return (
+                    <View style={styles.coachBioContainer}>
+                      <Text style={styles.coachBioName}>{selectedCoach.name}</Text>
+                      {selectedCoach.credentials && (
+                        <Text style={styles.coachBioCredentials}>{selectedCoach.credentials}</Text>
+                      )}
+                      {selectedCoach.practiceLocation && (
+                        <Text style={styles.coachBioLocation}>📍 {selectedCoach.practiceLocation}</Text>
+                      )}
+                      {selectedCoach.bio && (
+                        <Text style={styles.coachBioText}>{selectedCoach.bio}</Text>
+                      )}
+                    </View>
+                  );
+                })()}
                 
                 <TouchableOpacity
                   style={[styles.modalButton, styles.modalSendButton, (connecting || !selectedApprovedId) && styles.modalButtonDisabled]}
@@ -993,6 +1278,10 @@ export default function SettingsScreen({
                     {connecting ? 'Connecting...' : 'Connect to Coach'}
                   </Text>
                 </TouchableOpacity>
+                
+                <Text style={styles.coachSwitchNote}>
+                  💡 You can change coaches once per billing cycle. Changes take effect immediately.
+                </Text>
               </>
             )}
           </View>
@@ -1019,7 +1308,7 @@ export default function SettingsScreen({
           
           {loadingPractitioners ? (
             <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color="#2A6972" />
+              <ActivityIndicator size="small" color={colors.brandPrimary} />
             </View>
           ) : practitioners.length === 0 ? (
             <View style={styles.card}>
@@ -1091,8 +1380,8 @@ export default function SettingsScreen({
                   setWeeklyInsightsEnabled(value);
                   saveInsightsPreferences(value, monthlyInsightsEnabled);
                 }}
-                trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                thumbColor={weeklyInsightsEnabled ? '#2A6972' : '#999'}
+                trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                thumbColor={weeklyInsightsEnabled ? colors.brandPrimary : colors.fontMuted}
                 disabled={savingInsights}
               />
             </View>
@@ -1108,15 +1397,15 @@ export default function SettingsScreen({
                   setMonthlyInsightsEnabled(value);
                   saveInsightsPreferences(weeklyInsightsEnabled, value);
                 }}
-                trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                thumbColor={monthlyInsightsEnabled ? '#2A6972' : '#999'}
+                trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                thumbColor={monthlyInsightsEnabled ? colors.brandPrimary : colors.fontMuted}
                 disabled={savingInsights}
               />
             </View>
             
             {savingInsights && (
               <View style={styles.savingIndicator}>
-                <ActivityIndicator size="small" color="#2A6972" />
+                <ActivityIndicator size="small" color={colors.brandPrimary} />
                 <Text style={styles.savingText}>Saving...</Text>
               </View>
             )}
@@ -1142,8 +1431,8 @@ export default function SettingsScreen({
             <Switch
               value={pushEnabled}
               onValueChange={handlePushToggle}
-              trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-              thumbColor={pushEnabled ? '#2A6972' : '#999'}
+              trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+              thumbColor={pushEnabled ? colors.brandPrimary : colors.fontMuted}
             />
           </View>
           
@@ -1157,8 +1446,8 @@ export default function SettingsScreen({
                 <Switch
                   value={pushDailyPrompts}
                   onValueChange={setPushDailyPrompts}
-                  trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                  thumbColor={pushDailyPrompts ? '#2A6972' : '#999'}
+                  trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                  thumbColor={pushDailyPrompts ? colors.brandPrimary : colors.fontMuted}
                 />
               </View>
               
@@ -1170,8 +1459,8 @@ export default function SettingsScreen({
                     <Switch
                       value={pushWishMilestones}
                       onValueChange={setPushWishMilestones}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={pushWishMilestones ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={pushWishMilestones ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                   
@@ -1180,8 +1469,8 @@ export default function SettingsScreen({
                     <Switch
                       value={pushGratitudePrompts}
                       onValueChange={setPushGratitudePrompts}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={pushGratitudePrompts ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={pushGratitudePrompts ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                   
@@ -1190,8 +1479,8 @@ export default function SettingsScreen({
                     <Switch
                       value={pushCoachReplies}
                       onValueChange={setPushCoachReplies}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={pushCoachReplies ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={pushCoachReplies ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                   
@@ -1200,8 +1489,8 @@ export default function SettingsScreen({
                     <Switch
                       value={pushWeeklyInsights}
                       onValueChange={setPushWeeklyInsights}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={pushWeeklyInsights ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={pushWeeklyInsights ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                 </>
@@ -1272,16 +1561,33 @@ export default function SettingsScreen({
               
               <View style={styles.inputGroup}>
                 <Text style={styles.inputLabel}>Phone Number</Text>
-                <TextInput
-                  style={styles.smsInput}
-                  placeholder="+1 555 123 4567"
-                  placeholderTextColor="#999"
-                  value={phoneNumber}
-                  onChangeText={setPhoneNumber}
-                  keyboardType="phone-pad"
-                  autoCapitalize="none"
-                />
-                <Text style={styles.inputHint}>Format: +15551234567 (include country code)</Text>
+                <View style={styles.phoneInputRow}>
+                  <View style={styles.countryCodePicker}>
+                    <Picker
+                      selectedValue={countryCode}
+                      onValueChange={(value) => setCountryCode(value)}
+                      style={styles.countryPicker}
+                      itemStyle={styles.countryPickerItem}>
+                      {COUNTRY_CODES.map((c) => (
+                        <Picker.Item 
+                          key={c.code} 
+                          label={`${c.flag} ${c.code}`} 
+                          value={c.code} 
+                        />
+                      ))}
+                    </Picker>
+                  </View>
+                  <TextInput
+                    style={styles.phoneNumberInput}
+                    placeholder="(555) 123-4567"
+                    placeholderTextColor={colors.fontMuted}
+                    value={localPhoneNumber}
+                    onChangeText={handlePhoneChange}
+                    keyboardType="phone-pad"
+                    autoCapitalize="none"
+                  />
+                </View>
+                <Text style={styles.inputHint}>Select country code, then enter your number</Text>
               </View>
               
               <View style={styles.inputGroup}>
@@ -1291,16 +1597,13 @@ export default function SettingsScreen({
                   onValueChange={(value) => setSelectedTimezone(value)}
                   style={styles.picker}
                   itemStyle={styles.pickerItem}>
-                  <Picker.Item label="Hawaii (Pacific/Honolulu)" value="Pacific/Honolulu" />
-                  <Picker.Item label="Alaska (America/Anchorage)" value="America/Anchorage" />
-                  <Picker.Item label="Pacific Time (America/Los_Angeles)" value="America/Los_Angeles" />
-                  <Picker.Item label="Mountain Time (America/Denver)" value="America/Denver" />
-                  <Picker.Item label="Arizona (America/Phoenix)" value="America/Phoenix" />
-                  <Picker.Item label="Central Time (America/Chicago)" value="America/Chicago" />
-                  <Picker.Item label="Eastern Time (America/New_York)" value="America/New_York" />
-                  <Picker.Item label="London (Europe/London)" value="Europe/London" />
-                  <Picker.Item label="Paris (Europe/Paris)" value="Europe/Paris" />
-                  <Picker.Item label="Sydney (Australia/Sydney)" value="Australia/Sydney" />
+                  {TIMEZONES.map((tz) => (
+                    <Picker.Item 
+                      key={tz.value} 
+                      label={tz.label} 
+                      value={tz.value} 
+                    />
+                  ))}
                 </Picker>
               </View>
               
@@ -1311,8 +1614,8 @@ export default function SettingsScreen({
                 <Switch
                   value={smsEnabled}
                   onValueChange={setSmsEnabled}
-                  trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                  thumbColor={smsEnabled ? '#2A6972' : '#999'}
+                  trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                  thumbColor={smsEnabled ? colors.brandPrimary : colors.fontMuted}
                 />
               </View>
               
@@ -1325,8 +1628,8 @@ export default function SettingsScreen({
                     <Switch
                       value={smsWishMilestones}
                       onValueChange={setSmsWishMilestones}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={smsWishMilestones ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={smsWishMilestones ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                   
@@ -1335,8 +1638,8 @@ export default function SettingsScreen({
                     <Switch
                       value={smsDailyPrompts}
                       onValueChange={setSmsDailyPrompts}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={smsDailyPrompts ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={smsDailyPrompts ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                   
@@ -1345,8 +1648,8 @@ export default function SettingsScreen({
                     <Switch
                       value={smsGratitudePrompts}
                       onValueChange={setSmsGratitudePrompts}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={smsGratitudePrompts ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={smsGratitudePrompts ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                   
@@ -1355,8 +1658,8 @@ export default function SettingsScreen({
                     <Switch
                       value={smsCoachReplies}
                       onValueChange={setSmsCoachReplies}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={smsCoachReplies ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={smsCoachReplies ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                   
@@ -1365,8 +1668,8 @@ export default function SettingsScreen({
                     <Switch
                       value={smsWeeklyInsights}
                       onValueChange={setSmsWeeklyInsights}
-                      trackColor={{false: '#E0E0E0', true: '#4A9BA8'}}
-                      thumbColor={smsWeeklyInsights ? '#2A6972' : '#999'}
+                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
+                      thumbColor={smsWeeklyInsights ? colors.brandPrimary : colors.fontMuted}
                     />
                   </View>
                 </View>
@@ -1417,7 +1720,7 @@ export default function SettingsScreen({
               onPress={handleExportData}
               disabled={exporting}>
               {exporting ? (
-                <ActivityIndicator color="#fff" size="small" />
+                <ActivityIndicator color={colors.fontWhite} size="small" />
               ) : (
                 <Text style={styles.exportButtonText}>📥 Export My Data</Text>
               )}
@@ -1877,7 +2180,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   removeButton: {
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.sm,
-    backgroundColor: '#FEE2E2',
+    backgroundColor: 'rgba(229, 62, 62, 0.15)',
     borderRadius: borderRadius.sm,
   },
   removeButtonText: {
@@ -2003,10 +2306,54 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: borderRadius.md,
     marginBottom: spacing.base,
     height: 44,
+    color: colors.fontMain,
   },
   pickerItem: {
     fontSize: fontSize.md,
     height: 44,
+    color: colors.fontMain,
+  },
+  coachBioContainer: {
+    backgroundColor: colors.bgMuted,
+    borderRadius: borderRadius.md,
+    padding: spacing.base,
+    marginBottom: spacing.base,
+    borderLeftWidth: 3,
+    borderLeftColor: colors.brandPrimary,
+  },
+  coachBioName: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.lg,
+    color: colors.fontMain,
+    marginBottom: 4,
+  },
+  coachBioCredentials: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.brandLight,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  coachBioLocation: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+    marginBottom: spacing.sm,
+  },
+  coachBioText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+    lineHeight: 22,
+    fontStyle: 'italic',
+  },
+  coachSwitchNote: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.fontMuted,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
   },
   insightsDescription: {
     fontFamily: fontFamily.body,
@@ -2131,6 +2478,44 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     lineHeight: 22,
   },
   // SMS Section Styles
+  phoneInputRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+  },
+  countryCodePicker: {
+    width: 120,
+    height: 50,
+    backgroundColor: colors.bgMuted,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    borderRadius: borderRadius.md,
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  countryPicker: {
+    height: 50,
+    width: '100%',
+    color: colors.fontMain,
+  },
+  countryPickerItem: {
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    height: 50,
+  },
+  phoneNumberInput: {
+    flex: 1,
+    fontFamily: fontFamily.body,
+    backgroundColor: colors.bgMuted,
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    height: 50,
+  },
   smsInput: {
     fontFamily: fontFamily.body,
     backgroundColor: colors.bgMuted,
@@ -2303,7 +2688,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   permissionWarning: {
     fontFamily: fontFamily.body,
     fontSize: fontSize.xs,
-    color: '#F59E0B',
+    color: colors.btnWarning,
     marginTop: 2,
   },
   openSettingsButton: {

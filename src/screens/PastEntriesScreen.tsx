@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo} from 'react';
+import React, {useState, useEffect, useMemo, useCallback} from 'react';
 import {
   View,
   Text,
@@ -9,9 +9,11 @@ import {
   Modal,
   Alert,
   ActivityIndicator,
+  Linking,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
+import {useFocusEffect} from '@react-navigation/native';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import PastEntryCard from '../components/PastEntryCard';
@@ -73,12 +75,26 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   const [showingSearchResults, setShowingSearchResults] = useState(false);
   const [loadingEntries, setLoadingEntries] = useState(false);
 
+  // Period Insights state
+  const [generatingInsights, setGeneratingInsights] = useState(false);
+  const [insightsModalVisible, setInsightsModalVisible] = useState(false);
+  const [insightsContent, setInsightsContent] = useState('');
+  const [insightsPeriod, setInsightsPeriod] = useState<'7' | '30'>('7');
+
   const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Load entries and identify dates with journal entries
   useEffect(() => {
     loadEntryDates();
   }, [displayedMonth, displayedYear]);
+
+  // Refresh calendar data when screen comes into focus (e.g., after push notification navigation)
+  useFocusEffect(
+    useCallback(() => {
+      console.log('📅 PastEntries focused - refreshing calendar data');
+      loadEntryDates();
+    }, [displayedMonth, displayedYear])
+  );
 
   const loadEntryDates = async () => {
     try {
@@ -211,11 +227,40 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         .orderBy('createdAt', 'desc')
         .get();
 
-      const matchingEntries = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        date: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().date,
-      }));
+      // Load entries with their coach replies from subcollection
+      const matchingEntries = await Promise.all(
+        snapshot.docs.map(async (doc) => {
+          const entryData = doc.data();
+          let coachResponse = null;
+          
+          // If there's a new coach reply flag, fetch the reply from subcollection
+          if (entryData.newCoachReply) {
+            try {
+              const repliesSnapshot = await firestore()
+                .collection('journalEntries')
+                .doc(doc.id)
+                .collection('coachReplies')
+                .orderBy('timestamp', 'desc')
+                .limit(1)
+                .get();
+              
+              if (!repliesSnapshot.empty) {
+                const replyData = repliesSnapshot.docs[0].data();
+                coachResponse = replyData.replyText || replyData.text;
+              }
+            } catch (replyError) {
+              console.error('Error loading coach reply:', replyError);
+            }
+          }
+          
+          return {
+            id: doc.id,
+            ...entryData,
+            date: entryData.createdAt?.toDate?.()?.toISOString() || entryData.date,
+            coachResponse,
+          };
+        })
+      );
 
       console.log('Found entries:', matchingEntries.length);
       setSelectedDateEntries(matchingEntries);
@@ -376,13 +421,38 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
           .where(firestore.FieldPath.documentId(), 'in', batch)
           .get();
         
-        snapshot.docs.forEach(doc => {
+        // Load each entry with potential coach replies
+        for (const doc of snapshot.docs) {
+          const entryData = doc.data();
+          let coachResponse = null;
+          
+          // If there's a new coach reply flag, fetch the reply
+          if (entryData.newCoachReply) {
+            try {
+              const repliesSnapshot = await firestore()
+                .collection('journalEntries')
+                .doc(doc.id)
+                .collection('coachReplies')
+                .orderBy('timestamp', 'desc')
+                .limit(1)
+                .get();
+              
+              if (!repliesSnapshot.empty) {
+                const replyData = repliesSnapshot.docs[0].data();
+                coachResponse = replyData.replyText || replyData.text;
+              }
+            } catch (replyError) {
+              console.error('Error loading coach reply:', replyError);
+            }
+          }
+          
           fullResults.push({
             id: doc.id,
-            ...doc.data(),
-            date: doc.data().createdAt?.toDate?.()?.toISOString() || doc.data().date,
+            ...entryData,
+            date: entryData.createdAt?.toDate?.()?.toISOString() || entryData.date,
+            coachResponse,
           });
-        });
+        }
       }
 
       setSearchResults(fullResults);
@@ -403,6 +473,61 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
     setSearchResults([]);
     setShowingSearchResults(false);
     setSelectedDateEntries([]);
+  };
+
+  // Generate Period Insights (7-day or 30-day)
+  const handleGeneratePeriodInsights = async (days: '7' | '30') => {
+    const user = auth().currentUser;
+    if (!user) {
+      Alert.alert('Error', 'Please log in to generate insights.');
+      return;
+    }
+
+    setGeneratingInsights(true);
+    setInsightsPeriod(days);
+
+    try {
+      const idToken = await user.getIdToken(true);
+      const endpoint = __DEV__
+        ? 'http://localhost:5001/inkwell-alpha/us-central1/generatePeriodInsights'
+        : 'https://us-central1-inkwell-alpha.cloudfunctions.net/generatePeriodInsights';
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          days: parseInt(days),
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Period insights error:', response.status, errorText);
+        throw new Error(`Failed to generate insights: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      if (data.insight) {
+        setInsightsContent(data.insight);
+        setInsightsModalVisible(true);
+      } else if (data.message) {
+        Alert.alert('Not Enough Data', data.message);
+      } else {
+        Alert.alert('Error', 'Could not generate insights at this time.');
+      }
+    } catch (error: any) {
+      console.error('Error generating period insights:', error);
+      Alert.alert(
+        'Error',
+        'Failed to generate insights. Please try again later.',
+      );
+    } finally {
+      setGeneratingInsights(false);
+    }
   };
 
   const monthName = new Date(displayedYear, displayedMonth, 1).toLocaleString(
@@ -487,6 +612,38 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         </View>
       </View>
 
+      {/* Period Insights Buttons */}
+      <View style={styles.periodInsightsContainer}>
+        <Text style={styles.periodInsightsTitle}>✨ Sophy's Insights</Text>
+        <Text style={styles.periodInsightsSubtitle}>
+          Get an AI-powered reflection on your recent journaling
+        </Text>
+        <View style={styles.periodInsightsButtons}>
+          <TouchableOpacity
+            style={[
+              styles.periodInsightButton,
+              generatingInsights && styles.periodInsightButtonDisabled,
+            ]}
+            onPress={() => handleGeneratePeriodInsights('7')}
+            disabled={generatingInsights}>
+            <Text style={styles.periodInsightButtonText}>
+              {generatingInsights && insightsPeriod === '7' ? '⏳ Generating...' : '📊 7-Day Insights'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.periodInsightButton,
+              generatingInsights && styles.periodInsightButtonDisabled,
+            ]}
+            onPress={() => handleGeneratePeriodInsights('30')}
+            disabled={generatingInsights}>
+            <Text style={styles.periodInsightButtonText}>
+              {generatingInsights && insightsPeriod === '30' ? '⏳ Generating...' : '📈 30-Day Insights'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
       {/* Divider */}
       <View style={styles.divider} />
 
@@ -535,13 +692,13 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
           </Text>
         ) : null}
         {selectedDate && !loadingEntries && (
-          <Text style={{fontSize: 12, color: '#666', marginBottom: 8, textAlign: 'center'}}>
+          <Text style={{fontSize: 12, color: colors.fontMuted, marginBottom: 8, textAlign: 'center'}}>
             {selectedDateEntries.length} entry(ies) loaded
           </Text>
         )}
         {loadingEntries ? (
           <View style={styles.placeholderContainer}>
-            <ActivityIndicator size="large" color={colors.primary} />
+            <ActivityIndicator size="large" color={colors.brandPrimary} />
             <Text style={[styles.placeholderText, {marginTop: spacing.md}]}>
               Loading entries...
             </Text>
@@ -619,6 +776,34 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         actionLabel={getTip('past_entries_intro').actionLabel}
         onDismiss={handleDismissOnboarding}
       />
+
+      {/* Period Insights Modal */}
+      <Modal
+        visible={insightsModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setInsightsModalVisible(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>
+              ✨ {insightsPeriod}-Day Insights
+            </Text>
+            <TouchableOpacity onPress={() => setInsightsModalVisible(false)}>
+              <Text style={styles.modalCloseButton}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView style={styles.insightsScrollView}>
+            <Text style={styles.insightsContent}>{insightsContent}</Text>
+          </ScrollView>
+          <View style={styles.insightsFooter}>
+            <TouchableOpacity
+              style={styles.insightsCloseButton}
+              onPress={() => setInsightsModalVisible(false)}>
+              <Text style={styles.insightsCloseButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -710,7 +895,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.brandPrimaryRgba,
   },
   hasReplyCell: {
-    backgroundColor: colors.accentGrowth,
+    backgroundColor: colors.tierConnect,
   },
   todayCell: {
     backgroundColor: colors.tierPlus,
@@ -868,6 +1053,77 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.fontWhite,
     fontSize: fontSize.md,
     letterSpacing: 0.5,
+  },
+  
+  // Period Insights styles
+  periodInsightsContainer: {
+    marginTop: spacing.lg,
+    marginBottom: spacing.md,
+    padding: spacing.md,
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.lg,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  periodInsightsTitle: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.lg,
+    color: colors.brandPrimary,
+    textAlign: 'center',
+    marginBottom: spacing.xs,
+  },
+  periodInsightsSubtitle: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+    textAlign: 'center',
+    marginBottom: spacing.md,
+  },
+  periodInsightsButtons: {
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  periodInsightButton: {
+    flex: 1,
+    backgroundColor: colors.brandPrimary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  periodInsightButtonDisabled: {
+    opacity: 0.6,
+  },
+  periodInsightButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.sm,
+  },
+  insightsScrollView: {
+    flex: 1,
+    padding: spacing.lg,
+  },
+  insightsContent: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    lineHeight: 24,
+  },
+  insightsFooter: {
+    padding: spacing.lg,
+    borderTopWidth: 1,
+    borderTopColor: colors.borderLight,
+  },
+  insightsCloseButton: {
+    backgroundColor: colors.brandPrimary,
+    paddingVertical: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+  },
+  insightsCloseButtonText: {
+    fontFamily: fontFamily.buttonBold,
+    color: colors.fontWhite,
+    fontSize: fontSize.md,
   },
 });
 

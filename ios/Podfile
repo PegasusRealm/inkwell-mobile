@@ -39,5 +39,33 @@ target 'InkWellMobile' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+    
+    # Fix React-perflogger FuseboxTracer compilation issue on Xcode 16/iOS 26
+    # FuseboxTracer.cpp includes folly headers that require experimental/coro/Coroutine.h
+    # which is not included in RCT-Folly. We need to:
+    # 1. Add header search paths so folly headers can be found
+    # 2. Remove fusebox source files from compilation
+    installer.pods_project.targets.each do |target|
+      if target.name == 'React-perflogger'
+        # Add header search paths for folly
+        target.build_configurations.each do |build_config|
+          current_paths = build_config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
+          folly_path = '"${PODS_ROOT}/RCT-Folly"'
+          boost_path = '"${PODS_ROOT}/boost"'
+          double_conv_path = '"${PODS_ROOT}/DoubleConversion"'
+          glog_path = '"${PODS_ROOT}/glog/src"'
+          unless current_paths.include?('RCT-Folly')
+            build_config.build_settings['HEADER_SEARCH_PATHS'] = "#{current_paths} #{folly_path} #{boost_path} #{double_conv_path} #{glog_path}"
+          end
+        end
+        
+        # Remove fusebox source files from compilation
+        target.source_build_phase.files.to_a.each do |source_file|
+          if source_file.file_ref && source_file.file_ref.path && source_file.file_ref.path.include?('fusebox')
+            source_file.remove_from_project
+          end
+        end
+      end
+    end
   end
 end

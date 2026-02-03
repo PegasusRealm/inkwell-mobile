@@ -166,7 +166,9 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
       const start = new Date(wishStartDate);
       const now = new Date();
       const daysElapsed = Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
-      const percent = Math.min((daysElapsed / wishTimeline) * 100, 100);
+      const actualPercent = Math.min((daysElapsed / wishTimeline) * 100, 100);
+      // Ensure minimum 5% visual fill so bar never looks empty
+      const percent = Math.max(actualPercent, 5);
       setProgressPercent(percent);
     };
 
@@ -258,7 +260,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
     try {
       const currentUser = auth().currentUser;
       if (!currentUser) {
-        Alert.alert('Error', 'You must be logged in to save your WISH.');
+        Alert.alert('Error', 'You must be logged in to save your manifest.');
         return;
       }
 
@@ -266,15 +268,16 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
       const now = new Date().toISOString();
 
       // Set start date for progress tracking (only on first save)
+      const isNewWish = !wishStartDate;
       const startDate = wishStartDate || now;
-      if (!wishStartDate) {
+      if (isNewWish) {
         setWishStartDate(startDate);
         await AsyncStorage.setItem(`wishStart_${userId}`, startDate);
         console.log('🎯 WISH timeline started:', startDate);
       }
 
       // Prepare WISH data
-      const manifestData = {
+      const manifestData: Record<string, any> = {
         want: wantText,
         imagine: imagineText,
         snags: snagsText,
@@ -283,6 +286,12 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         startDate: startDate,
         updatedAt: now,
       };
+      
+      // If this is a new WISH, reset milestone tracking
+      if (isNewWish) {
+        manifestData.milestonesSent = [];
+        manifestData.lastMilestoneSentAt = null;
+      }
 
       // Save to AsyncStorage (local, instant)
       await AsyncStorage.setItem(`manifest_${userId}`, JSON.stringify(manifestData));
@@ -302,7 +311,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
       setSnagsSuggestion('');
       setHowSuggestion('');
 
-      Alert.alert('Success', 'Your WISH has been saved!');
+      Alert.alert('Success', 'Your manifest has been saved!');
     } catch (error) {
       Alert.alert('Error', 'Failed to save WISH.');
     } finally {
@@ -312,8 +321,8 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
 
   const handleClearWish = () => {
     Alert.alert(
-      'Time for New WISH?',
-      'This will clear all your current WISH content and reset your timeline. Are you sure?',
+      'Time for a New Manifest?',
+      'This will clear all your current manifest content and reset your timeline. Are you sure?',
       [
         {text: 'Cancel', style: 'cancel'},
         {
@@ -366,7 +375,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         {!wishStartDate && (
           <View style={styles.timelineSection}>
             <Text style={styles.timelineLabel}>
-              How many days to achieve this WISH?
+              How many days to manifest this?
             </Text>
             <View style={styles.radioGroup}>
               {[30, 60, 90].map((days) => (
@@ -398,7 +407,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         {/* Progress Bar - Show when started */}
         {wishStartDate && (
           <View style={styles.progressSection}>
-            <Text style={styles.progressTitle}>Your WISH Growth Journey</Text>
+            <Text style={styles.progressTitle}>Your Manifesting Journey</Text>
             <View style={styles.progressBarContainer}>
               <View style={[styles.progressBarFill, {width: `${progressPercent}%`}]}>
                 <Text style={styles.progressEmoji}>
@@ -415,7 +424,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
                 ? 'Making solid progress - you\'re developing new patterns'
                 : progressPercent < 100
                 ? 'Approaching your timeline - notice how far you\'ve come'
-                : 'Timeline reached - Time for New WISH!'}
+                : 'Timeline reached - Time for a New Manifest!'}
             </Text>
           </View>
         )}
@@ -424,7 +433,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         {!wishStartDate && (
           <View style={styles.timelineProgress}>
             <Text style={styles.timelineProgressLabel}>
-              Your WISH Growth Journey
+              Your Manifesting Journey
             </Text>
             
             {/* Growth Stages */}
@@ -471,7 +480,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         <TextInput
           style={styles.textArea}
           placeholder="Write your Want here..."
-          placeholderTextColor="#93A5A8"
+          placeholderTextColor={colors.fontMuted}
           value={wantText}
           onChangeText={setWantText}
           multiline
@@ -510,7 +519,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         <TextInput
           style={styles.textArea}
           placeholder="Write your Imagine here..."
-          placeholderTextColor="#93A5A8"
+          placeholderTextColor={colors.fontMuted}
           value={imagineText}
           onChangeText={setImagineText}
           multiline
@@ -554,7 +563,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         <TextInput
           style={styles.textArea}
           placeholder="Write your Snags here..."
-          placeholderTextColor="#93A5A8"
+          placeholderTextColor={colors.fontMuted}
           value={snagsText}
           onChangeText={setSnagsText}
           multiline
@@ -592,7 +601,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         <TextInput
           style={styles.textArea}
           placeholder="Write your How here..."
-          placeholderTextColor="#93A5A8"
+          placeholderTextColor={colors.fontMuted}
           value={howText}
           onChangeText={setHowText}
           multiline
@@ -620,16 +629,16 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         {/* Coach Guidance */}
         <View style={styles.coachGuidance}>
           <Text style={styles.coachGuidanceTitle}>
-            Want to share your WISH with your coach?
+            Want to share your manifest with your coach?
           </Text>
           <Text style={styles.coachGuidanceText}>
-            Your WISH is a personal visioning tool for your private reflection.
-            To share it with your coach, create a journal entry about your WISH
+            Your manifest is a personal visioning tool for your private reflection.
+            To share it with your coach, create a journal entry about your goals
             using the "Journal" tab, then tag it for coach review. Your current
-            WISH will automatically be included as context with your entry.
+            manifest will automatically be included as context with your entry.
           </Text>
           <Text style={styles.coachGuidanceHint}>
-            Consider reflecting: What insights emerged from this WISH? What
+            Consider reflecting: What insights emerged from this? What
             support do you need from your coach?
           </Text>
         </View>
@@ -643,16 +652,16 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
           onPress={handleSave}
           disabled={saving}>
           <Text style={styles.saveButtonText}>
-            {saving ? 'Saving...' : 'Save My WISH'}
+            {saving ? 'Saving...' : 'Save My Manifest'}
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.clearButton} onPress={handleClearWish}>
-          <Text style={styles.clearButtonText}>Time for New WISH</Text>
+          <Text style={styles.clearButtonText}>Time for New Manifest</Text>
         </TouchableOpacity>
 
         <Text style={styles.helpText}>
-          Your WISH is saved privately and helps guide your personal growth
+          Your manifest is saved privately and helps guide your personal growth
           journey.
         </Text>
       </View>

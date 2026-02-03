@@ -391,7 +391,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   coachResponseNew: {
     borderLeftWidth: 4,
-    borderLeftColor: colors.sophyAccent,
+    borderLeftColor: colors.tierConnect,
   },
   coachResponseTitle: {
     fontSize: fontSize.sm,

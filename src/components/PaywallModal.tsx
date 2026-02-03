@@ -203,7 +203,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
       <Modal visible={visible} transparent animationType="slide">
         <View style={styles.container}>
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#2A6972" />
+            <ActivityIndicator size="large" color={colors.brandPrimary} />
             <Text style={styles.loadingText}>Loading plans...</Text>
           </View>
         </View>
