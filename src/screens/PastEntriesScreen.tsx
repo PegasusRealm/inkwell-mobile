@@ -92,11 +92,59 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   useFocusEffect(
     useCallback(() => {
       console.log('📅 PastEntries focused - refreshing calendar data');
-      loadEntryDates();
-    }, [displayedMonth, displayedYear])
+      
+      const refreshData = async () => {
+        // First, reload calendar highlights (force server to bypass cache)
+        await loadEntryDates(true);
+        
+        // If user already has a date selected, refresh those entries
+        if (selectedDate && !showingSearchResults) {
+          const parts = selectedDate.split('/');
+          if (parts.length === 3) {
+            const day = parseInt(parts[1], 10);
+            if (!isNaN(day)) {
+              handleDateClick(day);
+            }
+          }
+        } else {
+          // No date selected - check if there are new coach replies and auto-select today
+          try {
+            const user = auth().currentUser;
+            if (user) {
+              const today = new Date();
+              const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+              const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
+              
+              // Check for entries with new coach replies today (force server fetch)
+              const replyCheck = await firestore()
+                .collection('journalEntries')
+                .where('userId', '==', user.uid)
+                .where('newCoachReply', '==', true)
+                .where('createdAt', '>=', startOfDay)
+                .where('createdAt', '<=', endOfDay)
+                .limit(1)
+                .get({ source: 'server' });
+              
+              if (!replyCheck.empty) {
+                console.log('📨 Found new coach reply today - auto-selecting today');
+                // Make sure we're viewing current month
+                setDisplayedMonth(today.getMonth());
+                setDisplayedYear(today.getFullYear());
+                // Auto-select today's date
+                handleDateClick(today.getDate());
+              }
+            }
+          } catch (error) {
+            console.log('Error checking for new replies:', error);
+          }
+        }
+      };
+      
+      refreshData();
+    }, [displayedMonth, displayedYear, selectedDate, showingSearchResults])
   );
 
-  const loadEntryDates = async () => {
+  const loadEntryDates = async (forceServer = false) => {
     try {
       const user = auth().currentUser;
       if (!user) {
@@ -110,12 +158,16 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
       const endOfMonth = new Date(displayedYear, displayedMonth + 1, 0, 23, 59, 59, 999);
 
       // Query Firestore for entries in this month
-      const snapshot = await firestore()
+      // Use server source when forcing refresh to bypass cache
+      const query = firestore()
         .collection('journalEntries')
         .where('userId', '==', user.uid)
         .where('createdAt', '>=', startOfMonth)
-        .where('createdAt', '<=', endOfMonth)
-        .get();
+        .where('createdAt', '<=', endOfMonth);
+      
+      const snapshot = forceServer 
+        ? await query.get({ source: 'server' })
+        : await query.get();
 
       const datesWithEntries = new Set<string>();
       const datesWithReplies = new Set<string>();
@@ -218,14 +270,14 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
 
       console.log('Querying for entries between:', startOfDay, 'and', endOfDay);
 
-      // Query Firestore for entries on this specific day
+      // Query Firestore for entries on this specific day (force server to bypass cache)
       const snapshot = await firestore()
         .collection('journalEntries')
         .where('userId', '==', user.uid)
         .where('createdAt', '>=', startOfDay)
         .where('createdAt', '<=', endOfDay)
         .orderBy('createdAt', 'desc')
-        .get();
+        .get({ source: 'server' });
 
       // Load entries with their coach replies from subcollection
       const matchingEntries = await Promise.all(
@@ -233,8 +285,9 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
           const entryData = doc.data();
           let coachResponse = null;
           
-          // If there's a new coach reply flag, fetch the reply from subcollection
-          if (entryData.newCoachReply) {
+          // Always try to fetch coach reply if entry was shared with practitioner
+          // (not just when newCoachReply is true - reply might have been read already)
+          if (entryData.sharedWithPractitioner || entryData.newCoachReply) {
             try {
               const repliesSnapshot = await firestore()
                 .collection('journalEntries')
@@ -426,8 +479,8 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
           const entryData = doc.data();
           let coachResponse = null;
           
-          // If there's a new coach reply flag, fetch the reply
-          if (entryData.newCoachReply) {
+          // Always try to fetch coach reply if entry was shared
+          if (entryData.sharedWithPractitioner || entryData.newCoachReply) {
             try {
               const repliesSnapshot = await firestore()
                 .collection('journalEntries')
@@ -1108,6 +1161,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.fontMain,
     lineHeight: 24,
+    paddingBottom: spacing.xl,
   },
   insightsFooter: {
     padding: spacing.lg,

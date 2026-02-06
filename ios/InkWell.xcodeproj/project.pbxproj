@@ -516,7 +516,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = InkWellMobile/InkWellMobile.entitlements;
-				CURRENT_PROJECT_VERSION = 54;
+				CURRENT_PROJECT_VERSION = 64;
 				DEVELOPMENT_TEAM = GULD29SRW8;
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = InkWellMobile/Info.plist;
@@ -527,7 +527,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.0;
+				MARKETING_VERSION = 4.26036.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -548,7 +548,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = InkWellMobile/InkWellMobile.entitlements;
-				CURRENT_PROJECT_VERSION = 54;
+				CURRENT_PROJECT_VERSION = 64;
 				DEVELOPMENT_TEAM = GULD29SRW8;
 				INFOPLIST_FILE = InkWellMobile/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = InkWell;
@@ -558,7 +558,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 4.0;
+				MARKETING_VERSION = 4.26036.2;
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",

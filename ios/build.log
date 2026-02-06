@@ -1,0 +1,3 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -workspace InkWell.xcworkspace -scheme InkWell -configuration Release -archivePath build/InkWell.xcarchive archive -allowProvisioningUpdates
+

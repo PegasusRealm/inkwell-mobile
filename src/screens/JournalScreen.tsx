@@ -55,7 +55,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   const {colors, isDark} = useTheme();
   
   // Create styles with current theme colors
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   
   // Subscription hook for feature gating
   const {
@@ -722,27 +722,44 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
     setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
-  const uploadAttachments = async (): Promise<Array<{url: string; name: string}>> => {
+  const uploadAttachments = async (): Promise<Array<{url: string; name: string; type?: string}>> => {
     if (attachments.length === 0) return [];
 
     const user = auth().currentUser;
     if (!user) throw new Error('User not authenticated');
 
-    const uploadedAttachments: Array<{url: string; name: string}> = [];
+    const uploadedAttachments: Array<{url: string; name: string; type?: string}> = [];
+    const failedUploads: string[] = [];
 
     for (const file of attachments) {
       try {
+        // Preserve file extension in storage path
         const fileName = `${user.uid}/${Date.now()}_${file.name}`;
         const reference = storage().ref(fileName);
         
+        console.log(`📤 Uploading: ${file.name} (${file.type})`);
         await reference.putFile(file.uri);
         const url = await reference.getDownloadURL();
         
-        uploadedAttachments.push({url, name: file.name});
+        uploadedAttachments.push({
+          url, 
+          name: file.name,
+          type: file.type, // Store MIME type for better display handling
+        });
+        console.log(`✅ Uploaded: ${file.name}`);
       } catch (uploadError) {
-        console.error('Upload error for', file.name, uploadError);
+        console.error('❌ Upload error for', file.name, uploadError);
+        failedUploads.push(file.name);
         // Continue with other files even if one fails
       }
+    }
+
+    // Notify user if any files failed
+    if (failedUploads.length > 0) {
+      Alert.alert(
+        'Some Files Failed',
+        `Could not upload: ${failedUploads.join(', ')}. The rest of your entry was saved.`,
+      );
     }
 
     return uploadedAttachments;
@@ -779,24 +796,22 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         }
       }
 
-      // Check for today's manifest data to auto-include
+      // Check for user's manifest data to auto-include
       let manifestData = null;
       let hasManifestData = false;
       try {
-        const today = new Date().toISOString().split('T')[0];
-        const manifestSnapshot = await firestore()
-          .collection('manifest')
-          .where('userId', '==', user.uid)
-          .where('date', '==', today)
-          .limit(1)
+        // Manifest is stored as a single doc per user in 'manifests' collection
+        const manifestDoc = await firestore()
+          .collection('manifests')
+          .doc(user.uid)
           .get();
         
-        if (!manifestSnapshot.empty) {
-          const manifestDoc = manifestSnapshot.docs[0].data();
-          const wish = manifestDoc.want || '';
-          const outcome = manifestDoc.imagine || '';
-          const opposition = manifestDoc.snags || '';
-          const plan = manifestDoc.how || '';
+        if (manifestDoc.exists()) {
+          const manifestDocData = manifestDoc.data();
+          const wish = manifestDocData?.want || '';
+          const outcome = manifestDocData?.imagine || '';
+          const opposition = manifestDocData?.snags || '';
+          const plan = manifestDocData?.how || '';
           
           if (wish || outcome || opposition || plan) {
             hasManifestData = true;
@@ -806,11 +821,11 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
               opposition,
               plan,
             };
-            console.log('✨ Auto-including manifest data from today:', manifestData);
+            console.log('✨ Auto-including manifest data:', manifestData);
           }
         }
       } catch (manifestError) {
-        console.log('No manifest data found for today:', manifestError);
+        console.log('No manifest data found:', manifestError);
       }
 
       // Initialize tags array for auto-generated tags
@@ -1762,7 +1777,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 };
 
 // Dynamic styles based on theme colors
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -2067,7 +2082,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.sm,
   },
   emotionalInsightsChip: {
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: isDark ? 'rgba(42, 105, 114, 0.3)' : 'rgba(42, 105, 114, 0.15)',
     paddingVertical: spacing.xs,
     paddingHorizontal: spacing.sm,
     borderRadius: borderRadius.md,
@@ -2076,12 +2091,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   emotionalInsightsLabel: {
     fontFamily: fontFamily.body,
     fontSize: fontSize.xs,
-    color: colors.fontSecondary,
+    color: isDark ? colors.brandPrimary : colors.fontSecondary,
+    marginBottom: 2,
   },
   emotionalInsightsValue: {
     fontFamily: fontFamily.button,
     fontSize: fontSize.sm,
-    color: colors.fontMain,
+    color: isDark ? colors.fontMain : colors.fontDark,
     textTransform: 'capitalize',
   },
   emotionalInsightsDismiss: {

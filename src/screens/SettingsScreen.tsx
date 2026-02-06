@@ -1184,8 +1184,6 @@ export default function SettingsScreen({
         </View>
       </View>
 
-      {/* ew>
-
       {/* Help & Support Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Help & Support</Text>
@@ -1220,68 +1218,143 @@ export default function SettingsScreen({
           </View>
         ) : (
           <View style={styles.card}>
-            <Text style={styles.approvedDescription}>
-              Choose from our verified coaches who are available to support InkWell users.
-            </Text>
-            
-            {loadingApproved ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color={colors.brandPrimary} />
-              </View>
-            ) : approvedPractitioners.length === 0 ? (
-              <Text style={styles.emptyText}>
-                No practitioners available at this time.
-              </Text>
+            {/* Show current connection if exists */}
+            {practitioners.length > 0 ? (
+              <>
+                <View style={styles.connectedCoachCard}>
+                  <Text style={styles.connectedLabel}>✓ Currently Connected</Text>
+                  <Text style={styles.connectedCoachName}>{practitioners[0].name}</Text>
+                  {practitioners[0].email && (
+                    <Text style={styles.connectedCoachEmail}>{practitioners[0].email}</Text>
+                  )}
+                </View>
+                
+                {loadingApproved ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={colors.brandPrimary} />
+                  </View>
+                ) : approvedPractitioners.length > 0 && (
+                  <>
+                    <View style={styles.divider}>
+                      <Text style={styles.dividerText}>— switch coach —</Text>
+                    </View>
+                    <Text style={styles.inputLabel}>Select Different Coach</Text>
+                    <Picker
+                      selectedValue={selectedApprovedId}
+                      onValueChange={(value) => setSelectedApprovedId(value)}
+                      style={[styles.picker, {color: colors.fontMain}]}
+                      itemStyle={{...styles.pickerItem, color: colors.fontMain}}>
+                      <Picker.Item label="Choose a coach..." value="" color={colors.fontMain} />
+                      {approvedPractitioners.filter(p => p.id !== practitioners[0]?.id).map(pract => (
+                        <Picker.Item
+                          key={pract.id}
+                          label={`${pract.name}${pract.credentials ? ` (${pract.credentials})` : ''}`}
+                          value={pract.id}
+                          color={colors.fontMain}
+                        />
+                      ))}
+                    </Picker>
+                    
+                    {selectedApprovedId && (() => {
+                      const selectedCoach = approvedPractitioners.find(p => p.id === selectedApprovedId);
+                      if (!selectedCoach) return null;
+                      return (
+                        <View style={styles.coachBioContainer}>
+                          <Text style={styles.coachBioName}>{selectedCoach.name}</Text>
+                          {selectedCoach.credentials && (
+                            <Text style={styles.coachBioCredentials}>{selectedCoach.credentials}</Text>
+                          )}
+                          {selectedCoach.practiceLocation && (
+                            <Text style={styles.coachBioLocation}>📍 {selectedCoach.practiceLocation}</Text>
+                          )}
+                          {selectedCoach.bio && (
+                            <Text style={styles.coachBioText}>{selectedCoach.bio}</Text>
+                          )}
+                        </View>
+                      );
+                    })()}
+                    
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalSendButton, (connecting || !selectedApprovedId) && styles.modalButtonDisabled]}
+                      onPress={handleConnectToApproved}
+                      disabled={connecting || !selectedApprovedId}>
+                      <Text style={styles.modalSendButtonText}>
+                        {connecting ? 'Switching...' : 'Switch Coach'}
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    <Text style={styles.coachSwitchNote}>
+                      💡 You can change coaches once per billing cycle.
+                    </Text>
+                  </>
+                )}
+              </>
             ) : (
               <>
-                <Text style={styles.inputLabel}>Select Coach</Text>
-                <Picker
-                  selectedValue={selectedApprovedId}
-                  onValueChange={(value) => setSelectedApprovedId(value)}
-                  style={styles.picker}
-                  itemStyle={styles.pickerItem}>
-                  <Picker.Item label="Choose a coach..." value="" />
-                  {approvedPractitioners.map(pract => (
-                    <Picker.Item
-                      key={pract.id}
-                      label={`${pract.name}${pract.credentials ? ` (${pract.credentials})` : ''}`}
-                      value={pract.id}
-                    />
-                  ))}
-                </Picker>
-                
-                {/* Show selected coach bio and details */}
-                {selectedApprovedId && (() => {
-                  const selectedCoach = approvedPractitioners.find(p => p.id === selectedApprovedId);
-                  if (!selectedCoach) return null;
-                  return (
-                    <View style={styles.coachBioContainer}>
-                      <Text style={styles.coachBioName}>{selectedCoach.name}</Text>
-                      {selectedCoach.credentials && (
-                        <Text style={styles.coachBioCredentials}>{selectedCoach.credentials}</Text>
-                      )}
-                      {selectedCoach.practiceLocation && (
-                        <Text style={styles.coachBioLocation}>📍 {selectedCoach.practiceLocation}</Text>
-                      )}
-                      {selectedCoach.bio && (
-                        <Text style={styles.coachBioText}>{selectedCoach.bio}</Text>
-                      )}
-                    </View>
-                  );
-                })()}
-                
-                <TouchableOpacity
-                  style={[styles.modalButton, styles.modalSendButton, (connecting || !selectedApprovedId) && styles.modalButtonDisabled]}
-                  onPress={handleConnectToApproved}
-                  disabled={connecting || !selectedApprovedId}>
-                  <Text style={styles.modalSendButtonText}>
-                    {connecting ? 'Connecting...' : 'Connect to Coach'}
-                  </Text>
-                </TouchableOpacity>
-                
-                <Text style={styles.coachSwitchNote}>
-                  💡 You can change coaches once per billing cycle. Changes take effect immediately.
+                <Text style={styles.approvedDescription}>
+                  Choose from our verified coaches who are available to support InkWell users.
                 </Text>
+                
+                {loadingApproved ? (
+                  <View style={styles.loadingContainer}>
+                    <ActivityIndicator size="small" color={colors.brandPrimary} />
+                  </View>
+                ) : approvedPractitioners.length === 0 ? (
+                  <Text style={styles.emptyText}>
+                    No practitioners available at this time.
+                  </Text>
+                ) : (
+                  <>
+                    <Text style={styles.inputLabel}>Select Coach</Text>
+                    <Picker
+                      selectedValue={selectedApprovedId}
+                      onValueChange={(value) => setSelectedApprovedId(value)}
+                      style={[styles.picker, {color: colors.fontMain}]}
+                      itemStyle={{...styles.pickerItem, color: colors.fontMain}}>
+                      <Picker.Item label="Choose a coach..." value="" color={colors.fontMain} />
+                      {approvedPractitioners.map(pract => (
+                        <Picker.Item
+                          key={pract.id}
+                          label={`${pract.name}${pract.credentials ? ` (${pract.credentials})` : ''}`}
+                          value={pract.id}
+                          color={colors.fontMain}
+                        />
+                      ))}
+                    </Picker>
+                    
+                    {selectedApprovedId && (() => {
+                      const selectedCoach = approvedPractitioners.find(p => p.id === selectedApprovedId);
+                      if (!selectedCoach) return null;
+                      return (
+                        <View style={styles.coachBioContainer}>
+                          <Text style={styles.coachBioName}>{selectedCoach.name}</Text>
+                          {selectedCoach.credentials && (
+                            <Text style={styles.coachBioCredentials}>{selectedCoach.credentials}</Text>
+                          )}
+                          {selectedCoach.practiceLocation && (
+                            <Text style={styles.coachBioLocation}>📍 {selectedCoach.practiceLocation}</Text>
+                          )}
+                          {selectedCoach.bio && (
+                            <Text style={styles.coachBioText}>{selectedCoach.bio}</Text>
+                          )}
+                        </View>
+                      );
+                    })()}
+                    
+                    <TouchableOpacity
+                      style={[styles.modalButton, styles.modalSendButton, (connecting || !selectedApprovedId) && styles.modalButtonDisabled]}
+                      onPress={handleConnectToApproved}
+                      disabled={connecting || !selectedApprovedId}>
+                      <Text style={styles.modalSendButtonText}>
+                        {connecting ? 'Connecting...' : 'Connect to Coach'}
+                      </Text>
+                    </TouchableOpacity>
+                    
+                    <Text style={styles.coachSwitchNote}>
+                      💡 You can change coaches once per billing cycle. Changes take effect immediately.
+                    </Text>
+                  </>
+                )}
               </>
             )}
           </View>
@@ -1289,57 +1362,18 @@ export default function SettingsScreen({
         
         {isConnect && (
           <View style={styles.divider}>
-            <Text style={styles.dividerText}>— or invite your own —</Text>
+            <Text style={styles.dividerText}>— or invite your own coach —</Text>
           </View>
         )}
-      </View>
-
-      {/* My Coaches Section - only show for Connect users */}
-      {isConnect && (
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <Text style={styles.sectionTitle}>My Coaches</Text>
-            <TouchableOpacity
-              style={styles.addButton}
-              onPress={() => setAddModalVisible(true)}>
-              <Text style={styles.addButtonText}>+ Add</Text>
-            </TouchableOpacity>
-          </View>
-          
-          {loadingPractitioners ? (
-            <View style={styles.loadingContainer}>
-              <ActivityIndicator size="small" color={colors.brandPrimary} />
-            </View>
-          ) : practitioners.length === 0 ? (
-            <View style={styles.card}>
-              <Text style={styles.emptyText}>
-                No coaches added yet. Add a coach to share journal entries and get support.
-              </Text>
-            </View>
-          ) : (
-            <View style={styles.card}>
-              {practitioners.map((pract, index) => (
-                <View
-                  key={pract.id}
-                  style={[
-                    styles.practitionerRow,
-                    index !== practitioners.length - 1 && styles.practitionerRowBorder,
-                ]}>
-                <View style={styles.practitionerInfo}>
-                  <Text style={styles.practitionerName}>{pract.name}</Text>
-                  <Text style={styles.practitionerEmail}>{pract.email}</Text>
-                </View>
-                <TouchableOpacity
-                  onPress={() => handleRemovePractitioner(pract.id, pract.name)}
-                  style={styles.removeButton}>
-                  <Text style={styles.removeButtonText}>Remove</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
+        
+        {isConnect && (
+          <TouchableOpacity
+            style={styles.inviteCoachButton}
+            onPress={() => setAddModalVisible(true)}>
+            <Text style={styles.inviteCoachButtonText}>✉️ Send Coach Invitation</Text>
+          </TouchableOpacity>
         )}
       </View>
-      )}
 
       {/* Email Insights Section */}
       <View style={styles.section}>
@@ -1566,13 +1600,14 @@ export default function SettingsScreen({
                     <Picker
                       selectedValue={countryCode}
                       onValueChange={(value) => setCountryCode(value)}
-                      style={styles.countryPicker}
-                      itemStyle={styles.countryPickerItem}>
+                      style={[styles.countryPicker, {color: colors.fontMain}]}
+                      itemStyle={{...styles.countryPickerItem, color: colors.fontMain}}>
                       {COUNTRY_CODES.map((c) => (
                         <Picker.Item 
                           key={c.code} 
                           label={`${c.flag} ${c.code}`} 
-                          value={c.code} 
+                          value={c.code}
+                          color={colors.fontMain}
                         />
                       ))}
                     </Picker>
@@ -1595,13 +1630,14 @@ export default function SettingsScreen({
                 <Picker
                   selectedValue={selectedTimezone}
                   onValueChange={(value) => setSelectedTimezone(value)}
-                  style={styles.picker}
-                  itemStyle={styles.pickerItem}>
+                  style={[styles.picker, {color: colors.fontMain}]}
+                  itemStyle={{...styles.pickerItem, color: colors.fontMain}}>
                   {TIMEZONES.map((tz) => (
                     <Picker.Item 
                       key={tz.value} 
                       label={tz.label} 
-                      value={tz.value} 
+                      value={tz.value}
+                      color={colors.fontMain}
                     />
                   ))}
                 </Picker>
@@ -2235,7 +2271,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   inputLabel: {
     fontFamily: fontFamily.button,
     fontSize: fontSize.sm,
-    color: colors.fontMain,
+    color: colors.brandLight,
     marginBottom: spacing.sm,
   },
   input: {
@@ -2246,7 +2282,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     padding: spacing.md,
     fontSize: fontSize.md,
     color: colors.fontMain,
-    backgroundColor: colors.bgMuted,
+    backgroundColor: colors.bgCard,
   },
   modalActions: {
     flexDirection: 'row',
@@ -2288,6 +2324,36 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.base,
     lineHeight: 22,
   },
+  connectedCoachCard: {
+    backgroundColor: colors.bgMuted,
+    borderRadius: borderRadius.md,
+    padding: spacing.base,
+    marginBottom: spacing.base,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.tierConnect,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
+  },
+  connectedLabel: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.xs,
+    color: colors.tierConnect,
+    fontWeight: '700',
+    marginBottom: 4,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  connectedCoachName: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.lg,
+    color: colors.brandLight,
+    marginBottom: 2,
+  },
+  connectedCoachEmail: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+  },
   divider: {
     marginTop: spacing.base,
     marginBottom: spacing.sm,
@@ -2300,7 +2366,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontStyle: 'italic',
   },
   picker: {
-    backgroundColor: colors.bgMuted,
+    backgroundColor: colors.bgCard,
     borderWidth: 1,
     borderColor: colors.borderMedium,
     borderRadius: borderRadius.md,
@@ -2314,12 +2380,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     color: colors.fontMain,
   },
   coachBioContainer: {
-    backgroundColor: colors.bgMuted,
+    backgroundColor: colors.bgCard,
     borderRadius: borderRadius.md,
     padding: spacing.base,
     marginBottom: spacing.base,
     borderLeftWidth: 3,
-    borderLeftColor: colors.brandPrimary,
+    borderLeftColor: colors.tierConnect,
+    borderWidth: 1,
+    borderColor: colors.borderLight,
   },
   coachBioName: {
     fontFamily: fontFamily.header,
@@ -2330,20 +2398,20 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   coachBioCredentials: {
     fontFamily: fontFamily.body,
     fontSize: fontSize.sm,
-    color: colors.brandLight,
+    color: colors.tierConnect,
     fontWeight: '600',
     marginBottom: 4,
   },
   coachBioLocation: {
     fontFamily: fontFamily.body,
     fontSize: fontSize.sm,
-    color: colors.fontMain,
+    color: colors.fontSecondary,
     marginBottom: spacing.sm,
   },
   coachBioText: {
     fontFamily: fontFamily.body,
     fontSize: fontSize.sm,
-    color: colors.fontMain,
+    color: colors.fontSecondary,
     lineHeight: 22,
     fontStyle: 'italic',
   },
@@ -2354,6 +2422,21 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.sm,
     fontStyle: 'italic',
+  },
+  inviteCoachButton: {
+    backgroundColor: colors.bgMuted,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.borderMedium,
+    marginTop: spacing.sm,
+  },
+  inviteCoachButtonText: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.md,
+    color: colors.tierConnect,
   },
   insightsDescription: {
     fontFamily: fontFamily.body,

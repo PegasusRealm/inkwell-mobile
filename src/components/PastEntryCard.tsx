@@ -296,15 +296,15 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   },
   cardWithNewReply: {
     borderLeftWidth: 5,
-    borderLeftColor: colors.sophyAccent,
-    shadowColor: colors.sophyAccent,
+    borderLeftColor: colors.tierConnect,
+    shadowColor: colors.tierConnect,
     shadowOpacity: 0.2,
   },
   newReplyBadge: {
     position: 'absolute',
     top: -8,
     right: spacing.md,
-    backgroundColor: colors.sophyAccent,
+    backgroundColor: colors.tierConnect,
     paddingHorizontal: spacing.sm,
     paddingVertical: 4,
     borderRadius: 12,

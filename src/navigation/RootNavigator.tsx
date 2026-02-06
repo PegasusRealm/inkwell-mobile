@@ -1,8 +1,9 @@
 import React from 'react';
 import {createStackNavigator} from '@react-navigation/stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
-import {Text} from 'react-native';
+import {Text, View} from 'react-native';
 import {useTheme} from '../theme/ThemeContext';
+import {useUnreadReplies} from '../hooks/useUnreadReplies';
 
 // Import screens
 import JournalScreen from '../screens/JournalScreen';
@@ -22,9 +23,39 @@ const TabIcon = ({label, focused}: {label: string; focused: boolean}) => (
   <Text style={{fontSize: 24, opacity: focused ? 1 : 0.5}}>{label}</Text>
 );
 
+// Tab icon with badge for unread notifications
+const TabIconWithBadge = ({label, focused, badgeCount, badgeColor}: {label: string; focused: boolean; badgeCount: number; badgeColor: string}) => (
+  <View style={{position: 'relative'}}>
+    <Text style={{fontSize: 24, opacity: focused ? 1 : 0.5}}>{label}</Text>
+    {badgeCount > 0 && (
+      <View style={{
+        position: 'absolute',
+        top: -4,
+        right: -10,
+        backgroundColor: badgeColor,
+        borderRadius: 10,
+        minWidth: 18,
+        height: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 4,
+      }}>
+        <Text style={{
+          color: '#FFFFFF',
+          fontSize: 11,
+          fontWeight: '700',
+        }}>
+          {badgeCount > 9 ? '9+' : badgeCount}
+        </Text>
+      </View>
+    )}
+  </View>
+);
+
 // Main bottom tab navigator
 function MainTabs() {
   const {colors} = useTheme();
+  const {unreadCount} = useUnreadReplies();
   
   return (
     <Tab.Navigator
@@ -66,7 +97,14 @@ function MainTabs() {
         component={PastEntriesScreen}
         options={{
           title: 'Past Entries',
-          tabBarIcon: ({focused}) => <TabIcon label="📅" focused={focused} />,
+          tabBarIcon: ({focused}) => (
+            <TabIconWithBadge 
+              label="📅" 
+              focused={focused} 
+              badgeCount={unreadCount}
+              badgeColor={colors.tierConnect}
+            />
+          ),
         }}
       />
     </Tab.Navigator>

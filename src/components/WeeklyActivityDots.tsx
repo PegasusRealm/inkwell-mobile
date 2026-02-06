@@ -44,11 +44,15 @@ const WeeklyActivityDots: React.FC<WeeklyActivityDotsProps> = ({ refreshTrigger 
         startOfWeek.setDate(now.getDate() - dayOfWeek);
         startOfWeek.setHours(0, 0, 0, 0);
         
+        // Convert to Firestore Timestamp for proper comparison
+        // (entries use serverTimestamp() which creates Timestamp, not ISO string)
+        const startOfWeekTimestamp = firestore.Timestamp.fromDate(startOfWeek);
+        
         // Query entries from this week
         const snapshot = await firestore()
           .collection('journalEntries')
           .where('userId', '==', user.uid)
-          .where('createdAt', '>=', startOfWeek.toISOString())
+          .where('createdAt', '>=', startOfWeekTimestamp)
           .orderBy('createdAt', 'desc')
           .get();
         
@@ -56,9 +60,15 @@ const WeeklyActivityDots: React.FC<WeeklyActivityDotsProps> = ({ refreshTrigger 
         const days = new Set<number>();
         snapshot.forEach(doc => {
           const data = doc.data();
-          const entryDate = data.createdAt 
-            ? new Date(data.createdAt)
-            : data.timestamp?.toDate?.() || new Date();
+          // Handle both Timestamp objects and ISO strings for backwards compatibility
+          let entryDate: Date;
+          if (data.createdAt?.toDate) {
+            entryDate = data.createdAt.toDate();
+          } else if (typeof data.createdAt === 'string') {
+            entryDate = new Date(data.createdAt);
+          } else {
+            entryDate = new Date();
+          }
           const entryDay = entryDate.getDay();
           days.add(entryDay);
         });
