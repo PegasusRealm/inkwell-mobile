@@ -124,6 +124,7 @@ export default function SettingsScreen({
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
   const [paywallVisible, setPaywallVisible] = useState(false);
+  const [crisisExpanded, setCrisisExpanded] = useState(false);
   
   // SMS Notifications state
   const [countryCode, setCountryCode] = useState('+1');
@@ -1208,13 +1209,16 @@ export default function SettingsScreen({
         {!isConnect ? (
           <View style={styles.card}>
             <Text style={styles.lockedDescription}>
-              🔒 Upgrade to Connect to work with certified coaches who can view your journal entries and provide professional support.
+              🔒 Connect with certified coaches who can view your journal entries and provide professional support.
             </Text>
             <TouchableOpacity
               style={[styles.upgradePromptButton, styles.upgradeConnectButton]}
-              onPress={() => checkFeatureAndShowPaywall('practitioner')}>
-              <Text style={styles.upgradePromptButtonText}>Upgrade to Connect</Text>
+              onPress={() => Linking.openURL('https://inkwelljournal.io')}>
+              <Text style={styles.upgradePromptButtonText}>🌐 Subscribe on inkwelljournal.io</Text>
             </TouchableOpacity>
+            <Text style={styles.webSubscribeNote}>
+              Connect subscriptions are managed through our website
+            </Text>
           </View>
         ) : (
           <View style={styles.card}>
@@ -1818,9 +1822,9 @@ export default function SettingsScreen({
         </View>
       </View>
 
-      {/* App Info Section */}
+      {/* App Info / About Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>About</Text>
+        <Text style={styles.sectionTitle}>About & Help</Text>
         <View style={styles.card}>
           <View style={styles.row}>
             <Text style={styles.label}>App Version</Text>
@@ -1831,6 +1835,47 @@ export default function SettingsScreen({
             <Text style={styles.value}>Alpha</Text>
           </View>
         </View>
+        
+        {/* Crisis Resources Button (inside About section) */}
+        <TouchableOpacity 
+          style={styles.crisisButton}
+          onPress={() => setCrisisExpanded(!crisisExpanded)}>
+          <Text style={styles.crisisButtonText}>❤️‍🩹 Mental Health Crisis Resources</Text>
+          <Text style={styles.crisisToggleIcon}>{crisisExpanded ? '▲' : '▼'}</Text>
+        </TouchableOpacity>
+        
+        {crisisExpanded && (
+          <View style={styles.crisisContent}>
+            <Text style={styles.crisisTitle}>🇺🇸 United States Crisis Resources</Text>
+            <Text style={styles.crisisSubtitle}>If you're experiencing a mental health crisis:</Text>
+            
+            <TouchableOpacity 
+              style={styles.crisisLink}
+              onPress={() => Linking.openURL('tel:988')}>
+              <Text style={styles.crisisLinkText}>📞 Call or text <Text style={styles.crisisBold}>988</Text> — Suicide & Crisis Lifeline</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.crisisLink}
+              onPress={() => Linking.openURL('sms:741741&body=HOME')}>
+              <Text style={styles.crisisLinkText}>💬 Text <Text style={styles.crisisBold}>HOME</Text> to <Text style={styles.crisisBold}>741741</Text> — Crisis Text Line</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={styles.crisisLink}
+              onPress={() => Linking.openURL('tel:1-800-273-8255')}>
+              <Text style={styles.crisisLinkText}>🎖️ Call <Text style={styles.crisisBold}>1-800-273-8255</Text> — Veterans Crisis Line</Text>
+            </TouchableOpacity>
+            
+            <Text style={styles.crisisInternational}>
+              🌍 Outside the US? Please reach out to your local emergency services or mental health resources.
+            </Text>
+            
+            <Text style={styles.crisisDisclaimer}>
+              InkWell, Sophy, and all coaches are wellness tools — not emergency services or replacements for professional mental health care.
+            </Text>
+          </View>
+        )}
       </View>
 
       {/* Logout Button */}
@@ -2040,6 +2085,14 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.base,
     letterSpacing: 0.5,
   },
+  webSubscribeNote: {
+    textAlign: 'center',
+    fontSize: fontSize.xs,
+    fontFamily: fontFamily.body,
+    color: colors.fontSecondary,
+    marginTop: spacing.sm,
+    fontStyle: 'italic',
+  },
   card: {
     backgroundColor: colors.bgCard,
     borderRadius: borderRadius.lg,
@@ -2146,6 +2199,80 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.fontWhite,
     letterSpacing: 0.5,
+  },
+  // Crisis Resources styles (inside About section)
+  crisisButton: {
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.lg,
+    padding: spacing.base,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#dc3545',
+    marginTop: spacing.md,
+  },
+  crisisButtonText: {
+    fontFamily: fontFamily.button,
+    fontSize: fontSize.sm,
+    color: '#dc3545',
+    flex: 1,
+  },
+  crisisToggleIcon: {
+    fontSize: fontSize.sm,
+    color: '#dc3545',
+  },
+  crisisContent: {
+    backgroundColor: '#fff5f5',
+    borderRadius: borderRadius.md,
+    padding: spacing.base,
+    marginTop: spacing.sm,
+    borderLeftWidth: 4,
+    borderLeftColor: '#dc3545',
+  },
+  crisisTitle: {
+    fontFamily: fontFamily.header,
+    fontSize: fontSize.md,
+    color: '#dc3545',
+    marginBottom: spacing.sm,
+  },
+  crisisSubtitle: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+    marginBottom: spacing.base,
+  },
+  crisisLink: {
+    backgroundColor: colors.bgCard,
+    borderRadius: borderRadius.md,
+    padding: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  crisisLinkText: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontMain,
+  },
+  crisisBold: {
+    fontFamily: fontFamily.buttonBold,
+    color: '#dc3545',
+  },
+  crisisInternational: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.fontSecondary,
+    marginTop: spacing.sm,
+    paddingTop: spacing.sm,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+  },
+  crisisDisclaimer: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.xs,
+    color: colors.fontMuted,
+    fontStyle: 'italic',
+    marginTop: spacing.sm,
+    lineHeight: 16,
   },
   footer: {
     marginTop: spacing.xxxl,

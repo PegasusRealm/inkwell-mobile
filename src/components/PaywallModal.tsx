@@ -1,8 +1,8 @@
 /**
  * InkWell Paywall Modal
- * Two-tier subscription upgrade screen: Plus + Connect
+ * Plus subscription upgrade screen with Connect web link
  * 
- * Updated 2026-01-06: Tiered design with separate Plus/Connect sections
+ * Updated 2026-02-06: Connect purchases via web only (Apple compliance)
  */
 
 import React, { useEffect, useState, useRef, useMemo } from 'react';
@@ -17,6 +17,7 @@ import {
   Alert,
   Dimensions,
   SafeAreaView,
+  Linking,
 } from 'react-native';
 import { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 import SubscriptionService, { AllOfferings } from '../services/SubscriptionService';
@@ -33,7 +34,8 @@ interface PaywallModalProps {
   featureBlocked?: string;
 }
 
-type SelectedTier = 'plus' | 'connect';
+// Connect tier is web-only per Apple guidelines
+type SelectedTier = 'plus';
 
 const PaywallModal: React.FC<PaywallModalProps> = ({
   visible,
@@ -299,41 +301,31 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             )}
           </TouchableOpacity>
 
-          {/* ═══════════ CONNECT TIER ═══════════ */}
-          {offerings.connect && connectPackage && (
+          {/* ═══════════ CONNECT TIER - WEB ONLY ═══════════ */}
+          <View style={[styles.tierCard, styles.connectCard, styles.connectWebOnly]}>
+            <View style={styles.tierHeader}>
+              <Text style={[styles.tierBadge, styles.connectBadge]}>INKWELL CONNECT</Text>
+            </View>
+
+            <Text style={styles.connectSubtitle}>Everything in Plus, plus human support</Text>
+
+            <View style={styles.featuresRow}>
+              <FeatureChip icon="🧠" text="All Plus Features" />
+              <FeatureChip icon="👤" text="1 Message/Week" />
+              <FeatureChip icon="🤝" text="Choose Your Coach" />
+              <FeatureChip icon="⚡" text="Priority Support" />
+            </View>
+
             <TouchableOpacity
-              style={[styles.tierCard, styles.connectCard, selectedTier === 'connect' && styles.tierCardSelected]}
-              onPress={() => setSelectedTier('connect')}
-              activeOpacity={0.8}
+              style={styles.webLinkButton}
+              onPress={() => Linking.openURL('https://inkwelljournal.io')}
             >
-              <View style={styles.tierHeader}>
-                <Text style={[styles.tierBadge, styles.connectBadge]}>INKWELL CONNECT</Text>
-                {selectedTier === 'connect' && <View style={styles.selectedDot} />}
-              </View>
-
-              <Text style={styles.connectSubtitle}>Everything in Plus, plus human support</Text>
-
-              <View style={styles.featuresRow}>
-                <FeatureChip icon="🧠" text="All Plus Features" />
-                <FeatureChip icon="👤" text="1 Message/Week" />
-                <FeatureChip icon="🤝" text="Choose Your Human" />
-                <FeatureChip icon="⚡" text="Priority Support" />
-              </View>
-
-              <View style={styles.connectPricing}>
-                <View style={styles.priceOptionLeft}>
-                  <View style={[styles.radioOuter, selectedTier === 'connect' && styles.radioOuterSelected]}>
-                    {selectedTier === 'connect' && <View style={styles.radioInner} />}
-                  </View>
-                  <Text style={styles.priceLabel}>Monthly</Text>
-                </View>
-                <View style={styles.priceOptionRight}>
-                  <Text style={styles.priceAmount}>{connectPackage.product.priceString}</Text>
-                  <Text style={styles.pricePeriod}>/month</Text>
-                </View>
-              </View>
+              <Text style={styles.webLinkButtonText}>🌐 Subscribe on inkwelljournal.io</Text>
             </TouchableOpacity>
-          )}
+            <Text style={styles.webLinkNote}>
+              Connect subscriptions are managed through our website
+            </Text>
+          </View>
 
           {/* CTA Button */}
           <TouchableOpacity
@@ -344,17 +336,14 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             {purchasing ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text style={styles.ctaButtonText}>
-                {selectedTier === 'plus' ? 'Start 7-Day Free Trial' : 'Subscribe to Connect'}
-              </Text>
+              <Text style={styles.ctaButtonText}>Start 7-Day Free Trial</Text>
             )}
           </TouchableOpacity>
 
-          {/* Fine print */}
+          {/* Fine print - Apple required disclosures */}
           <Text style={styles.finePrint}>
-            {selectedTier === 'plus'
-              ? `7-day free trial, then ${currentPackage?.product.priceString}${isPlusAnnual ? '/year' : '/month'}. Cancel anytime.`
-              : `Billed ${currentPackage?.product.priceString}/month. Cancel anytime.`}
+            7-day free trial, then {currentPackage?.product.priceString}{isPlusAnnual ? '/year' : '/month'}.{'\n'}
+            Subscription auto-renews until cancelled. Cancel anytime in Settings → Apple ID → Subscriptions.
           </Text>
 
           {/* Restore */}
@@ -365,8 +354,13 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
           {/* Legal */}
           <View style={styles.legalContainer}>
             <Text style={styles.legalText}>
-              By subscribing, you agree to our <Text style={styles.legalLink}>Terms</Text> and{' '}
-              <Text style={styles.legalLink}>Privacy Policy</Text>
+              By subscribing, you agree to our{' '}
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/terms-conditions/')}>
+                Terms
+              </Text>{' '}and{' '}
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy/')}>
+                Privacy Policy
+              </Text>
             </Text>
           </View>
         </ScrollView>
@@ -619,7 +613,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontSize: fontSize.sm,
   },
   
-  // Connect Pricing
+  // Connect Pricing (kept for reference, now using web link)
   connectPricing: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -629,6 +623,31 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderWidth: 1.5,
     borderColor: colors.tierConnect,
     backgroundColor: colors.tierConnect + '10',
+  },
+  
+  // Connect Web Only styles
+  connectWebOnly: {
+    opacity: 0.95,
+  },
+  webLinkButton: {
+    backgroundColor: colors.tierConnect,
+    padding: spacing.md,
+    borderRadius: borderRadius.md,
+    alignItems: 'center',
+    marginTop: spacing.sm,
+  },
+  webLinkButtonText: {
+    color: colors.fontWhite,
+    fontSize: fontSize.md,
+    fontFamily: fontFamily.buttonBold,
+  },
+  webLinkNote: {
+    textAlign: 'center',
+    fontSize: fontSize.xs,
+    fontFamily: fontFamily.body,
+    color: colors.fontSecondary,
+    marginTop: spacing.xs,
+    fontStyle: 'italic',
   },
   
   // CTA

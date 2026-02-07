@@ -46,9 +46,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
   const [loading, setLoading] = useState(false);
 
   // Configure Google Sign-In
+  // IMPORTANT: webClientId must be the Web OAuth 2.0 Client ID from Firebase Console
+  // This enables the idToken to be returned for Firebase Auth
   React.useEffect(() => {
     GoogleSignin.configure({
-      webClientId: '849610731668-vddadhg61m7dla7oh8avmjb2c69l4pbd.apps.googleusercontent.com',
+      webClientId: '824582728030-ods5dqf5n1emcg8qd39qk8k0j3ccu9k0.apps.googleusercontent.com',
       iosClientId: '849610731668-b3qfvenc3ff0b9e26ea0q326mgq4r98m.apps.googleusercontent.com',
       offlineAccess: true,
     });
@@ -167,59 +169,51 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       const appleCredential = auth.AppleAuthProvider.credential(identityToken, nonce);
       const userCredential = await auth().signInWithCredential(appleCredential);
       
-      // Create user profile if new user
-      const userDoc = await firestore().collection('users').doc(userCredential.user.uid).get();
-      if (!userDoc.exists) {
-        const displayName = appleAuthRequestResponse.fullName
-          ? `${appleAuthRequestResponse.fullName.givenName || ''} ${appleAuthRequestResponse.fullName.familyName || ''}`.trim()
-          : userCredential.user.displayName || userCredential.user.email?.split('@')[0] || 'InkWell User';
-        
-        await firestore().collection('users').doc(userCredential.user.uid).set({
-          userId: userCredential.user.uid,
-          email: userCredential.user.email,
-          displayName: displayName,
-          signupUsername: displayName,
-          avatar: userCredential.user.photoURL || '',
-          userRole: 'journaler', // Match web app role
-          authProvider: 'apple',
-          agreementAccepted: true,
-          special_code: 'beta', // Match web app beta code
-          subscriptionTier: 'free',
-          subscriptionStatus: 'active',
-          stripeCustomerId: null,
-          stripeSubscriptionId: null,
-          // Match web app insights preferences structure
-          insightsPreferences: {
-            weeklyEnabled: true,
-            monthlyEnabled: true,
-            createdAt: firestore.FieldValue.serverTimestamp(),
-          },
-          // Match web app onboarding state structure (from migration data)
-          onboardingState: {
-            hasCompletedVoiceEntry: false,
-            hasSeenWishTab: false,
-            hasCreatedWish: false,
-            hasUsedSophy: false,
-            totalEntries: 0,
-            currentMilestone: 'new_user',
-            milestones: {
-              firstEntry: null,
-              firstVoiceEntry: null,
-              firstWish: null,
-              firstSophyChat: null,
-            },
-            createdAt: firestore.FieldValue.serverTimestamp(),
+      // Build display name from Apple response or fallbacks
+      const displayName = appleAuthRequestResponse.fullName
+        ? `${appleAuthRequestResponse.fullName.givenName || ''} ${appleAuthRequestResponse.fullName.familyName || ''}`.trim()
+        : userCredential.user.displayName || userCredential.user.email?.split('@')[0] || 'InkWell User';
+      
+      // ALWAYS set user profile with merge:true - ensures all required fields exist
+      // This handles: new users, partial docs, and existing users (just updates lastLoginAt)
+      await firestore().collection('users').doc(userCredential.user.uid).set({
+        userId: userCredential.user.uid,
+        email: userCredential.user.email,
+        displayName: displayName,
+        signupUsername: displayName,
+        avatar: userCredential.user.photoURL || '',
+        userRole: 'journaler',
+        authProvider: 'apple',
+        agreementAccepted: true,
+        special_code: 'beta',
+        subscriptionTier: 'free',
+        subscriptionStatus: 'active',
+        stripeCustomerId: null,
+        stripeSubscriptionId: null,
+        insightsPreferences: {
+          weeklyEnabled: true,
+          monthlyEnabled: true,
+          createdAt: firestore.FieldValue.serverTimestamp(),
+        },
+        onboardingState: {
+          hasCompletedVoiceEntry: false,
+          hasSeenWishTab: false,
+          hasCreatedWish: false,
+          hasUsedSophy: false,
+          totalEntries: 0,
+          currentMilestone: 'new_user',
+          milestones: {
+            firstEntry: null,
+            firstVoiceEntry: null,
+            firstWish: null,
+            firstSophyChat: null,
           },
           createdAt: firestore.FieldValue.serverTimestamp(),
-          updatedAt: firestore.FieldValue.serverTimestamp(),
-          lastLoginAt: firestore.FieldValue.serverTimestamp(),
-        });
-      } else {
-        // Existing user - just update lastLoginAt
-        await firestore().collection('users').doc(userCredential.user.uid).update({
-          lastLoginAt: firestore.FieldValue.serverTimestamp(),
-        });
-      }
+        },
+        createdAt: firestore.FieldValue.serverTimestamp(),
+        updatedAt: firestore.FieldValue.serverTimestamp(),
+        lastLoginAt: firestore.FieldValue.serverTimestamp(),
+      }, { merge: true });
       
       onLoginSuccess();
     } catch (error: any) {
@@ -252,10 +246,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
     setLoading(true);
     try {
       const userCredential = await auth().signInWithEmailAndPassword(email, password);
-      // Track last login time
-      await firestore().collection('users').doc(userCredential.user.uid).update({
+      // Track last login time - use set with merge to handle edge cases
+      await firestore().collection('users').doc(userCredential.user.uid).set({
         lastLoginAt: firestore.FieldValue.serverTimestamp(),
-      });
+      }, { merge: true });
       onLoginSuccess();
     } catch (error: any) {
       let message = 'Login failed. Please try again.';
@@ -518,30 +512,40 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         {isSignUp && (
           <>
             {/* Terms & Conditions */}
-            <TouchableOpacity
-              style={styles.checkboxContainer}
-              onPress={() => setTermsAgreed(!termsAgreed)}
-              disabled={loading}>
-              <View style={[styles.checkbox, termsAgreed && styles.checkboxChecked]}>
-                {termsAgreed && <Text style={styles.checkmark}>✓</Text>}
-              </View>
+            <View style={styles.checkboxContainer}>
+              <TouchableOpacity
+                style={styles.checkboxTouchable}
+                onPress={() => setTermsAgreed(!termsAgreed)}
+                disabled={loading}>
+                <View style={[styles.checkbox, termsAgreed && styles.checkboxChecked]}>
+                  {termsAgreed && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
               <Text style={styles.checkboxLabel}>
-                I agree to the <Text style={styles.link}>Terms & Conditions</Text>
+                I agree to the{' '}
+                <Text style={styles.link} onPress={() => Linking.openURL('https://pegasusrealm.com/terms-conditions/')}>
+                  Terms & Conditions
+                </Text>
               </Text>
-            </TouchableOpacity>
+            </View>
 
             {/* Privacy Policy */}
-            <TouchableOpacity
-              style={styles.checkboxContainer}
-              onPress={() => setPrivacyAgreed(!privacyAgreed)}
-              disabled={loading}>
-              <View style={[styles.checkbox, privacyAgreed && styles.checkboxChecked]}>
-                {privacyAgreed && <Text style={styles.checkmark}>✓</Text>}
-              </View>
+            <View style={styles.checkboxContainer}>
+              <TouchableOpacity
+                style={styles.checkboxTouchable}
+                onPress={() => setPrivacyAgreed(!privacyAgreed)}
+                disabled={loading}>
+                <View style={[styles.checkbox, privacyAgreed && styles.checkboxChecked]}>
+                  {privacyAgreed && <Text style={styles.checkmark}>✓</Text>}
+                </View>
+              </TouchableOpacity>
               <Text style={styles.checkboxLabel}>
-                I agree to the <Text style={styles.link}>Privacy Policy</Text>
+                I agree to the{' '}
+                <Text style={styles.link} onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy/')}>
+                  Privacy Policy
+                </Text>
               </Text>
-            </TouchableOpacity>
+            </View>
           </>
         )}
 
