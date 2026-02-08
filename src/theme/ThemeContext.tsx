@@ -49,8 +49,10 @@ export const lightColors = {
   accentWarm: '#E53E3E',
 
   // Subscription Tier Colors
-  tierPlus: '#2A6972',
-  tierPlusLight: '#4A9BA8',
+  tierFree: '#2A6972',
+  tierFreeLight: '#4A9BA8',
+  tierPlus: '#D49489',
+  tierPlusLight: '#E6A497',
   tierConnect: '#805AD5',
   tierConnectLight: '#9F7AEA',
 
@@ -117,8 +119,10 @@ export const darkColors: typeof lightColors = {
   accentWarm: '#FC8181',
 
   // Subscription Tier Colors
-  tierPlus: '#4A9BA8',
-  tierPlusLight: '#7BB8C4',
+  tierFree: '#4A9BA8',
+  tierFreeLight: '#7BB8C4',
+  tierPlus: '#E6A497',
+  tierPlusLight: '#F0B5A7',
   tierConnect: '#9F7AEA',
   tierConnectLight: '#B794F4',
 

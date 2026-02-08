@@ -92,9 +92,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       const userCredential = await auth().signInWithCredential(googleCredential);
       console.log('🔵 Firebase sign-in SUCCESS, uid:', userCredential.user.uid);
       
+      // Check if this is a new user
+      const userDocRef = firestore().collection('users').doc(userCredential.user.uid);
+      const userDoc = await userDocRef.get();
+      const isNewUser = !userDoc.exists();
+      
       // Create user profile (always set to ensure document exists)
       console.log('🔵 Creating/updating Firestore user document...');
-      await firestore().collection('users').doc(userCredential.user.uid).set({
+      await userDocRef.set({
         userId: userCredential.user.uid,
         email: userCredential.user.email,
         displayName: userCredential.user.displayName || '',
@@ -103,7 +108,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         userRole: 'journaler',
         authProvider: 'google',
         agreementAccepted: true,
-        special_code: 'beta',
         subscriptionTier: 'free',
         subscriptionStatus: 'active',
         stripeCustomerId: null,
@@ -113,6 +117,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           monthlyEnabled: true,
           createdAt: firestore.FieldValue.serverTimestamp(),
         },
+        needsProfileCompletion: isNewUser, // Flag for new OAuth users
         onboardingState: {
           hasCompletedVoiceEntry: false,
           hasSeenWishTab: false,
@@ -133,6 +138,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         lastLoginAt: firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
       console.log('🔵 Firestore user document created/updated!');
+      
+      // Show welcome alert for new OAuth users
+      if (isNewUser) {
+        setTimeout(() => {
+          Alert.alert(
+            '🎉 Welcome to InkWell!',
+            'Your account is ready! Head to Settings to add your name and phone number for SMS gratitude reminders.',
+            [
+              { text: 'Maybe Later', style: 'cancel' },
+              { text: 'Go to Settings', style: 'default' }
+            ]
+          );
+        }, 500);
+      }
       
       onLoginSuccess();
     } catch (error: any) {
@@ -174,9 +193,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         ? `${appleAuthRequestResponse.fullName.givenName || ''} ${appleAuthRequestResponse.fullName.familyName || ''}`.trim()
         : userCredential.user.displayName || userCredential.user.email?.split('@')[0] || 'InkWell User';
       
-      // ALWAYS set user profile with merge:true - ensures all required fields exist
-      // This handles: new users, partial docs, and existing users (just updates lastLoginAt)
-      await firestore().collection('users').doc(userCredential.user.uid).set({
+      // Check if this is a new user
+      const userDocRef = firestore().collection('users').doc(userCredential.user.uid);
+      const userDoc = await userDocRef.get();
+      const isNewUser = !userDoc.exists();
+      
+      // Set user profile with merge:true - ensures all required fields exist
+      await userDocRef.set({
         userId: userCredential.user.uid,
         email: userCredential.user.email,
         displayName: displayName,
@@ -185,7 +208,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         userRole: 'journaler',
         authProvider: 'apple',
         agreementAccepted: true,
-        special_code: 'beta',
         subscriptionTier: 'free',
         subscriptionStatus: 'active',
         stripeCustomerId: null,
@@ -195,6 +217,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           monthlyEnabled: true,
           createdAt: firestore.FieldValue.serverTimestamp(),
         },
+        needsProfileCompletion: isNewUser, // Flag for new OAuth users
         onboardingState: {
           hasCompletedVoiceEntry: false,
           hasSeenWishTab: false,
@@ -214,6 +237,20 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         updatedAt: firestore.FieldValue.serverTimestamp(),
         lastLoginAt: firestore.FieldValue.serverTimestamp(),
       }, { merge: true });
+      
+      // Show welcome alert for new OAuth users
+      if (isNewUser) {
+        setTimeout(() => {
+          Alert.alert(
+            '🎉 Welcome to InkWell!',
+            'Your account is ready! Head to Settings to add your name and phone number for SMS gratitude reminders.',
+            [
+              { text: 'Maybe Later', style: 'cancel' },
+              { text: 'Go to Settings', style: 'default' }
+            ]
+          );
+        }, 500);
+      }
       
       onLoginSuccess();
     } catch (error: any) {

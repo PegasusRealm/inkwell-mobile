@@ -473,8 +473,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.bgCard,
   },
   tierCardSelected: {
-    borderColor: colors.brandPrimary,
-    backgroundColor: colors.infoBg,
+    borderColor: colors.tierPlus,
+    backgroundColor: colors.tierPlus + '10',
   },
   connectCard: {
     borderColor: colors.borderMedium,
@@ -488,7 +488,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   tierBadge: {
     fontSize: fontSize.sm,
     fontFamily: fontFamily.buttonBold,
-    color: colors.brandPrimary,
+    color: colors.tierPlus,
     letterSpacing: 1,
   },
   connectBadge: {
@@ -498,7 +498,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.brandPrimary,
+    backgroundColor: colors.tierPlus,
   },
   connectSubtitle: {
     fontSize: fontSize.sm,
@@ -547,8 +547,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: colors.bgCard,
   },
   priceOptionSelected: {
-    borderColor: colors.brandPrimary,
-    backgroundColor: colors.infoBg,
+    borderColor: colors.tierPlus,
+    backgroundColor: colors.tierPlus + '10',
   },
   priceOptionLeft: {
     flexDirection: 'row',
@@ -568,13 +568,13 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     alignItems: 'center',
   },
   radioOuterSelected: {
-    borderColor: colors.brandPrimary,
+    borderColor: colors.tierPlus,
   },
   radioInner: {
     width: 12,
     height: 12,
     borderRadius: 6,
-    backgroundColor: colors.brandPrimary,
+    backgroundColor: colors.tierPlus,
   },
   priceLabel: {
     fontSize: fontSize.md,
@@ -590,7 +590,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   priceAmount: {
     fontSize: fontSize.xl,
     fontFamily: fontFamily.header,
-    color: colors.brandPrimary,
+    color: colors.tierPlus,
   },
   pricePeriod: {
     fontSize: fontSize.sm,
@@ -652,7 +652,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   
   // CTA
   ctaButton: {
-    backgroundColor: colors.brandPrimary,
+    backgroundColor: colors.tierPlus,
     padding: spacing.lg,
     borderRadius: borderRadius.md,
     alignItems: 'center',
@@ -678,7 +678,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     textAlign: 'center',
     fontSize: fontSize.md,
     fontFamily: fontFamily.buttonBold,
-    color: colors.brandPrimary,
+    color: colors.tierPlus,
     marginBottom: spacing.lg,
   },
   legalContainer: {

@@ -40,9 +40,11 @@ export const colors = {
   accentWarm: '#E53E3E',
 
   // Subscription Tier Colors (consistent across app)
-  tierPlus: '#2A6972',        // Deep teal - matches brandPrimary
-  tierPlusLight: '#4A9BA8',   // Light teal for backgrounds
-  tierConnect: '#805AD5',     // Purple - premium tier
+  tierFree: '#2A6972',        // Deep teal - free tier
+  tierFreeLight: '#4A9BA8',   // Light teal for backgrounds
+  tierPlus: '#D49489',        // Sophy coral - Plus tier
+  tierPlusLight: '#E6A497',   // Light coral for backgrounds
+  tierConnect: '#805AD5',     // Purple - Connect tier
   tierConnectLight: '#9F7AEA', // Light purple for backgrounds
 
   // Sophy Colors

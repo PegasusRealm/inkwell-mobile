@@ -203,6 +203,7 @@ class SubscriptionService {
             const adminOverrideTier = userData.betaProgress?.tierOverride?.tier;
             const firestoreTier = userData.subscriptionTier;
             const specialCode = userData.special_code;
+            const freeTrialEnds = userData.freeTrialEnds;
             const isBetaTester = ['alpha', 'beta'].includes(specialCode);
             
             // Check for admin override tier (highest priority)
@@ -228,9 +229,31 @@ class SubscriptionService {
               };
             }
             
-            // Check for beta tester status (grants Plus)
-            if (isBetaTester) {
-              console.log('🔓 Beta tester detected, granting Plus access');
+            // Check for alpha/beta tester free trial period
+            // Alpha: 6 months free, Beta: 3 months free
+            if (isBetaTester && freeTrialEnds) {
+              const trialEndDate = freeTrialEnds.toDate ? freeTrialEnds.toDate() : new Date(freeTrialEnds);
+              const now = new Date();
+              
+              if (now < trialEndDate) {
+                console.log('🔓 Alpha/Beta free trial active until:', trialEndDate.toISOString());
+                return {
+                  tier: 'plus',
+                  isActive: true,
+                  willRenew: false,
+                  platform: 'stripe',
+                  expiresAt: trialEndDate,
+                };
+              } else {
+                console.log('⏰ Alpha/Beta free trial expired:', trialEndDate.toISOString());
+                // Trial expired - they need to subscribe at discounted rate
+              }
+            }
+            
+            // Legacy: Check for beta tester status without freeTrialEnds (grants Plus)
+            // This supports existing testers until we migrate them
+            if (isBetaTester && !freeTrialEnds) {
+              console.log('🔓 Legacy beta tester detected, granting Plus access');
               return {
                 tier: 'plus',
                 isActive: true,

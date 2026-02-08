@@ -2641,7 +2641,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.base,
     paddingVertical: spacing.sm,
     borderRadius: borderRadius.xl,
-    backgroundColor: colors.fontSecondary,
+    backgroundColor: colors.tierFree,
     alignSelf: 'flex-start',
   },
   subscriptionBadgePlus: {
