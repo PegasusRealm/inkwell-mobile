@@ -4,8 +4,8 @@ import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 
 // App version - update this when releasing new builds
-const APP_VERSION = '4.26036.3';
-const BUILD_NUMBER = '64';
+const APP_VERSION = '26.039.2';
+const BUILD_NUMBER = '72';
 
 export default function InfoScreen() {
   // Theme hook for dynamic theming

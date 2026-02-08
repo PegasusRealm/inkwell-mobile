@@ -133,7 +133,7 @@ export default function SettingsScreen({
   const [smsEnabled, setSmsEnabled] = useState(false);
   const [smsWishMilestones, setSmsWishMilestones] = useState(true);
   const [smsDailyPrompts, setSmsDailyPrompts] = useState(false);
-  const [smsGratitudePrompts, setSmsGratitudePrompts] = useState(true);
+  const [smsGratitudePrompts, setSmsGratitudePrompts] = useState(false); // Default off like web
   const [smsCoachReplies, setSmsCoachReplies] = useState(true);
   const [smsWeeklyInsights, setSmsWeeklyInsights] = useState(false);
   const [savingSms, setSavingSms] = useState(false);
@@ -431,12 +431,16 @@ export default function SettingsScreen({
       
       // Individual SMS preferences (these are correctly in smsPreferences on both)
       if (userData?.smsPreferences) {
+        // wishMilestones defaults to true if not set
         setSmsWishMilestones(userData.smsPreferences.wishMilestones !== false);
-        setSmsDailyPrompts(userData.smsPreferences.dailyPrompts || false);
-        // Web uses dailyGratitude, mobile used gratitudePrompts
-        setSmsGratitudePrompts(userData.smsPreferences.dailyGratitude !== false || userData.smsPreferences.gratitudePrompts !== false);
+        // dailyPrompts defaults to false
+        setSmsDailyPrompts(userData.smsPreferences.dailyPrompts === true);
+        // Web uses dailyGratitude, mobile used gratitudePrompts - both must be explicitly true
+        setSmsGratitudePrompts(userData.smsPreferences.dailyGratitude === true || userData.smsPreferences.gratitudePrompts === true);
+        // coachReplies defaults to true if not set
         setSmsCoachReplies(userData.smsPreferences.coachReplies !== false);
-        setSmsWeeklyInsights(userData.smsPreferences.weeklyInsights || false);
+        // weeklyInsights defaults to false
+        setSmsWeeklyInsights(userData.smsPreferences.weeklyInsights === true);
       }
     } catch (error) {
       console.error('Error loading SMS preferences:', error);
@@ -689,7 +693,7 @@ export default function SettingsScreen({
         exportInfo: {
           exportDate: new Date().toISOString(),
           userEmail: user.email,
-          appVersion: '1.0.0',
+          appVersion: '26.039.2',
           platform: Platform.OS,
         },
         statistics: {
@@ -1828,11 +1832,7 @@ export default function SettingsScreen({
         <View style={styles.card}>
           <View style={styles.row}>
             <Text style={styles.label}>App Version</Text>
-            <Text style={styles.value}>1.0.0</Text>
-          </View>
-          <View style={styles.row}>
-            <Text style={styles.label}>Build</Text>
-            <Text style={styles.value}>Alpha</Text>
+            <Text style={styles.value}>26.039.2</Text>
           </View>
         </View>
         

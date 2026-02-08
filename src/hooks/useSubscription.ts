@@ -19,7 +19,7 @@ export const useSubscription = () => {
     isActive: false,
     willRenew: false,
   });
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true); // Start true while initializing
   const [showPaywall, setShowPaywall] = useState(false);
   
   // Use refs to prevent re-initialization and infinite loops
@@ -100,6 +100,23 @@ export const useSubscription = () => {
     const subscription = AppState.addEventListener('change', handleAppStateChange);
     return () => subscription.remove();
   }, [refreshStatus]);
+
+  // AUTO-INITIALIZE on mount when user is authenticated
+  // This ensures subscription tier is fetched from Firestore immediately
+  useEffect(() => {
+    const initOnMount = async () => {
+      const user = auth().currentUser;
+      if (user && !initializedRef.current && !initializingRef.current) {
+        console.log('🔵 useSubscription: Auto-initializing on mount...');
+        await ensureInitialized();
+      } else if (!user) {
+        // No user yet, set loading false
+        setLoading(false);
+      }
+    };
+    
+    initOnMount();
+  }, [ensureInitialized]);
 
   const hasFeatureAccess = useCallback(async (
     feature: 'sms' | 'ai' | 'practitioner' | 'export' | 'fileUpload'
