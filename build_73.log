@@ -1,0 +1,5 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -workspace InkWell.xcworkspace -scheme InkWell -configuration Release -archivePath build/InkWell_73.xcarchive archive
+
+2026-02-11 15:29:38.669 xcodebuild[55929:371403] Writing error result bundle to /var/folders/gc/5vx5z_fx7m9cls66srdr_g4r0000gq/T/ResultBundle_2026-11-02_15-29-0038.xcresult
+xcodebuild: error: 'InkWell.xcworkspace' does not exist.

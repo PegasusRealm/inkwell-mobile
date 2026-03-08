@@ -7,6 +7,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Alert,
+  useWindowDimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import firestore from '@react-native-firebase/firestore';
@@ -17,10 +20,14 @@ import {refineManifest} from '../services/sophyApi';
 import OnboardingTip from '../components/OnboardingTip';
 import {useOnboarding} from '../hooks/useOnboarding';
 import type {TabScreenProps} from '../navigation/types';
+import {iPadContentStyle, getKeyboardVerticalOffset} from '../utils/iPad';
 
 const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
   // Theme hook for dynamic theming
   const {colors, isDark} = useTheme();
+  
+  // Dynamic screen dimensions for iPad responsiveness
+  const {width: screenWidth} = useWindowDimensions();
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -369,11 +376,20 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        {/* Timeline Selector - Only show if not started */}
-        {!wishStartDate && (
-          <View style={styles.timelineSection}>
+    <KeyboardAvoidingView 
+      style={styles.keyboardAvoid}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={getKeyboardVerticalOffset(true)}
+    >
+      <ScrollView 
+        style={styles.container}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={[styles.content, iPadContentStyle(screenWidth)]}>
+          {/* Timeline Selector - Only show if not started */}
+          {!wishStartDate && (
+            <View style={styles.timelineSection}>
             <Text style={styles.timelineLabel}>
               How many days to manifest this?
             </Text>
@@ -675,15 +691,24 @@ const ManifestScreen: React.FC<TabScreenProps<'Manifest'>> = ({navigation}) => {
         actionLabel={getTip('manifest_intro').actionLabel}
         onDismiss={handleDismissOnboarding}
       />
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 // Dynamic styles based on theme colors
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  keyboardAvoid: {
+    flex: 1,
+    backgroundColor: colors.bgPrimary,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   content: {
     padding: spacing.lg,
@@ -723,6 +748,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.borderMedium,
     backgroundColor: colors.bgCard,
     minWidth: 90,
+    minHeight: 44,
     justifyContent: 'center',
   },
   radioButtonSelected: {

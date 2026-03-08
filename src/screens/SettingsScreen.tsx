@@ -14,6 +14,8 @@ import {
   Platform,
   Linking,
   AppState,
+  useWindowDimensions,
+  KeyboardAvoidingView,
 } from 'react-native';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {Picker} from '@react-native-picker/picker';
@@ -23,6 +25,7 @@ import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import type {ThemeMode} from '../theme';
 import type {RootStackScreenProps} from '../navigation/types';
+import {iPadContentStyle, getKeyboardVerticalOffset} from '../utils/iPad';
 import {useSubscription} from '../hooks/useSubscription';
 import {useOnboarding} from '../hooks/useOnboarding';
 import PaywallModal from '../components/PaywallModal';
@@ -104,6 +107,9 @@ export default function SettingsScreen({
 }: RootStackScreenProps<'Settings'>) {
   const user = auth().currentUser;
   const {colors, themeMode, setThemeMode, isDark} = useTheme();
+  
+  // Dynamic screen dimensions for iPad responsiveness
+  const {width: screenWidth} = useWindowDimensions();
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -693,7 +699,7 @@ export default function SettingsScreen({
         exportInfo: {
           exportDate: new Date().toISOString(),
           userEmail: user.email,
-          appVersion: '26.039.2',
+          appVersion: '26.042.1',
           platform: Platform.OS,
         },
         statistics: {
@@ -1119,8 +1125,18 @@ export default function SettingsScreen({
   };
 
   return (
-    <ScrollView style={styles.container}>
-      {/* Account Section */}
+    <KeyboardAvoidingView 
+      style={styles.keyboardAvoid}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={getKeyboardVerticalOffset(true)}
+    >
+      <ScrollView 
+        style={styles.container}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={iPadContentStyle(screenWidth)}>
+        {/* Account Section */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Account</Text>
         <View style={styles.card}>
@@ -1832,7 +1848,7 @@ export default function SettingsScreen({
         <View style={styles.card}>
           <View style={styles.row}>
             <Text style={styles.label}>App Version</Text>
-            <Text style={styles.value}>26.039.2</Text>
+            <Text style={styles.value}>26.042.1</Text>
           </View>
         </View>
         
@@ -2016,15 +2032,25 @@ export default function SettingsScreen({
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 // Dynamic styles based on theme colors
 const createStyles = (colors: ThemeColors) => StyleSheet.create({
+  keyboardAvoid: {
+    flex: 1,
+    backgroundColor: colors.bgPrimary,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   section: {
     marginTop: spacing.xl,

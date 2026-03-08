@@ -13,7 +13,8 @@ import {
   Linking,
   ActivityIndicator,
   StatusBar,
-  ActionSheetIOS,
+  useWindowDimensions,
+  KeyboardAvoidingView,
 } from 'react-native';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
@@ -49,10 +50,14 @@ import InfoModal, { InfoHighlightBox, InfoParagraph, InfoDivider, InfoSection } 
 import WeeklyActivityDots from '../components/WeeklyActivityDots';
 import {useOnboarding} from '../hooks/useOnboarding';
 import type {TabScreenProps} from '../navigation/types';
+import {iPadContentStyle, showActionSheet, getKeyboardVerticalOffset} from '../utils/iPad';
 
 const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   // Theme hook for dynamic theming
   const {colors, isDark} = useTheme();
+  
+  // Dynamic screen dimensions for iPad responsiveness
+  const {width: screenWidth} = useWindowDimensions();
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
@@ -610,33 +615,19 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
       return; // Paywall will show automatically
     }
 
-    // Show action sheet to choose between Photos and Files
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['Cancel', '📷 Photo Library', '📄 Files'],
-          cancelButtonIndex: 0,
-        },
-        buttonIndex => {
-          if (buttonIndex === 1) {
-            handlePickPhotos();
-          } else if (buttonIndex === 2) {
-            handlePickDocuments();
-          }
-        },
-      );
-    } else {
-      // Android - show Alert as action sheet
-      Alert.alert(
-        'Attach Files',
-        'Choose where to select from:',
-        [
-          {text: 'Cancel', style: 'cancel'},
-          {text: '📷 Photo Library', onPress: handlePickPhotos},
-          {text: '📄 Files', onPress: handlePickDocuments},
-        ],
-      );
-    }
+    // Show action sheet (iPad-safe — uses Alert instead of ActionSheetIOS on iPad)
+    showActionSheet(
+      'Attach Files',
+      ['Cancel', '📷 Photo Library', '📄 Files'],
+      0,
+      (buttonIndex) => {
+        if (buttonIndex === 1) {
+          handlePickPhotos();
+        } else if (buttonIndex === 2) {
+          handlePickDocuments();
+        }
+      },
+    );
   };
 
   const handlePickPhotos = async () => {
@@ -1104,19 +1095,28 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.content}>
-        {/* Journal Mode Tabs */}
-        <View style={styles.modeTabsContainer}>
-          <TouchableOpacity
-            style={[styles.modeTab, activeMode === 'gratitude' && styles.modeTabActive]}
-            onPress={() => setActiveMode('gratitude')}>
-            <Text style={[styles.modeTabText, activeMode === 'gratitude' && styles.modeTabTextActive]}>
-              🙏 Gratitude
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.modeTab, activeMode === 'inkblot' && styles.modeTabActive]}
+    <KeyboardAvoidingView 
+      style={styles.keyboardAvoid}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+      keyboardVerticalOffset={getKeyboardVerticalOffset(true)}
+    >
+      <ScrollView 
+        style={styles.container}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.scrollContent}
+      >
+        <View style={[styles.content, iPadContentStyle(screenWidth)]}>
+          {/* Journal Mode Tabs */}
+          <View style={styles.modeTabsContainer}>
+            <TouchableOpacity
+              style={[styles.modeTab, activeMode === 'gratitude' && styles.modeTabActive]}
+              onPress={() => setActiveMode('gratitude')}>
+              <Text style={[styles.modeTabText, activeMode === 'gratitude' && styles.modeTabTextActive]}>
+                🙏 Gratitude
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.modeTab, activeMode === 'inkblot' && styles.modeTabActive]}
             onPress={() => setActiveMode('inkblot')}>
             <Text style={[styles.modeTabText, activeMode === 'inkblot' && styles.modeTabTextActive]}>
               ⚡ InkBlot
@@ -1772,15 +1772,24 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
           </InfoParagraph>
         </InfoSection>
       </InfoModal>
-    </ScrollView>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 };
 
 // Dynamic styles based on theme colors
 const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create({
+  keyboardAvoid: {
+    flex: 1,
+    backgroundColor: colors.bgPrimary,
+  },
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    paddingBottom: spacing.xxl,
   },
   content: {
     padding: spacing.lg,
@@ -1798,11 +1807,12 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
   },
   modeTab: {
     flex: 1,
-    paddingVertical: spacing.sm,
+    paddingVertical: spacing.md,
     paddingHorizontal: spacing.xs,
     borderRadius: borderRadius.md,
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 44,
   },
   modeTabActive: {
     backgroundColor: colors.brandPrimary,
@@ -1979,10 +1989,11 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
     alignItems: 'center',
     marginTop: spacing.sm,
     marginBottom: spacing.base,
+    minHeight: 44,
   },
   checkbox: {
-    width: 20,
-    height: 20,
+    width: 28,
+    height: 28,
     borderRadius: borderRadius.sm,
     borderWidth: 2,
     borderColor: colors.borderMedium,
@@ -2264,9 +2275,9 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
     color: colors.fontMuted,
   },
   removeButton: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.btnDanger + '20',
     justifyContent: 'center',
     alignItems: 'center',
@@ -2361,6 +2372,7 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
     alignItems: 'center',
     paddingVertical: spacing.sm,
     marginBottom: spacing.xs,
+    minHeight: 44,
   },
   collapsibleHeaderText: {
     fontFamily: fontFamily.button,
@@ -2422,6 +2434,8 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.base,
     borderRadius: borderRadius.md,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   tagAddButtonText: {
     fontFamily: fontFamily.buttonBold,
@@ -2440,6 +2454,8 @@ const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create
     padding: spacing.sm,
     borderBottomWidth: 1,
     borderBottomColor: colors.borderLight,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   tagSuggestionText: {
     fontFamily: fontFamily.body,

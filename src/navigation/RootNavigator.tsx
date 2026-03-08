@@ -1,9 +1,10 @@
 import React from 'react';
 import {createStackNavigator} from '@react-navigation/stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
-import {Text, View} from 'react-native';
+import {Text, View, Platform} from 'react-native';
 import {useTheme} from '../theme/ThemeContext';
 import {useUnreadReplies} from '../hooks/useUnreadReplies';
+import {isIPad} from '../utils/iPad';
 
 // Import screens
 import JournalScreen from '../screens/JournalScreen';
@@ -70,8 +71,8 @@ function MainTabs() {
         tabBarActiveTintColor: colors.brandPrimary,
         tabBarInactiveTintColor: colors.fontMuted,
         tabBarStyle: {
-          height: 60,
-          paddingBottom: 8,
+          height: isIPad() ? 70 : 60,
+          paddingBottom: isIPad() ? 12 : 8,
           backgroundColor: colors.bgCard,
           borderTopColor: colors.borderLight,
         },

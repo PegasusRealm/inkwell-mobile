@@ -16,7 +16,7 @@ import {
   Modal,
   TouchableOpacity,
   Animated,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import {useTheme} from '../theme/ThemeContext';
 
@@ -40,6 +40,7 @@ const OnboardingTip: React.FC<OnboardingTipProps> = ({
   onAction,
 }) => {
   const {colors} = useTheme();
+  const {width} = useWindowDimensions();
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(50)).current;
 
@@ -110,11 +111,12 @@ const OnboardingTip: React.FC<OnboardingTipProps> = ({
               backgroundColor: colors.bgCard,
               borderColor: colors.borderLight,
               transform: [{translateY: slideAnim}],
+              width: Math.min(width - 48, 400),
             },
           ]}
         >
           {/* Close button */}
-          <TouchableOpacity style={styles.closeButton} onPress={onDismiss}>
+          <TouchableOpacity style={styles.closeButton} onPress={onDismiss} hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
             <Text style={[styles.closeIcon, {color: colors.fontMuted}]}>×</Text>
           </TouchableOpacity>
 
@@ -146,8 +148,6 @@ const OnboardingTip: React.FC<OnboardingTipProps> = ({
   );
 };
 
-const {width} = Dimensions.get('window');
-
 const styles = StyleSheet.create({
   overlay: {
     flex: 1,
@@ -162,7 +162,6 @@ const styles = StyleSheet.create({
     bottom: 0,
   },
   modal: {
-    width: width - 48,
     maxWidth: 400,
     borderRadius: 20,
     padding: 24,
@@ -218,7 +217,9 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 25,
     minWidth: 160,
+    minHeight: 48,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   actionButtonText: {
     color: '#FFFFFF',

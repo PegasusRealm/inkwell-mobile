@@ -1,4 +1,4 @@
-import React, {useState, useEffect, useMemo, useCallback} from 'react';
+import React, {useState, useEffect, useMemo, useCallback, useRef} from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
   Alert,
   ActivityIndicator,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
@@ -20,10 +21,14 @@ import PastEntryCard from '../components/PastEntryCard';
 import OnboardingTip from '../components/OnboardingTip';
 import {useOnboarding} from '../hooks/useOnboarding';
 import type {TabScreenProps} from '../navigation/types';
+import {iPadContentStyle} from '../utils/iPad';
 
 const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}) => {
   // Theme hook for dynamic theming
   const {colors, isDark} = useTheme();
+  
+  // Dynamic screen dimensions for iPad responsiveness
+  const {width: screenWidth} = useWindowDimensions();
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -81,6 +86,11 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   const [insightsContent, setInsightsContent] = useState('');
   const [insightsPeriod, setInsightsPeriod] = useState<'7' | '30'>('7');
 
+  // Ref to prevent concurrent entry loading (fixes flickering bug)
+  const isLoadingEntriesRef = useRef(false);
+  // Ref to track selected date for useFocusEffect without creating dependency loop
+  const selectedDateRef = useRef<string | null>(null);
+
   const DAYS_OF_WEEK = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   // Load entries and identify dates with journal entries
@@ -97,16 +107,19 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         // First, reload calendar highlights (force server to bypass cache)
         await loadEntryDates(true);
         
+        // Use ref to check selected date (avoids dependency loop)
+        const currentSelectedDate = selectedDateRef.current;
+        
         // If user already has a date selected, refresh those entries
-        if (selectedDate && !showingSearchResults) {
-          const parts = selectedDate.split('/');
+        if (currentSelectedDate && !showingSearchResults) {
+          const parts = currentSelectedDate.split('/');
           if (parts.length === 3) {
             const day = parseInt(parts[1], 10);
             if (!isNaN(day)) {
               handleDateClick(day);
             }
           }
-        } else {
+        } else if (!currentSelectedDate) {
           // No date selected - check if there are new coach replies and auto-select today
           try {
             const user = auth().currentUser;
@@ -141,7 +154,7 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
       };
       
       refreshData();
-    }, [displayedMonth, displayedYear, selectedDate, showingSearchResults])
+    }, [handleDateClick, showingSearchResults])
   );
 
   const loadEntryDates = async (forceServer = false) => {
@@ -251,10 +264,19 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
     return weeks;
   };
 
-  const handleDateClick = async (day: number) => {
+  const handleDateClick = useCallback(async (day: number) => {
+    // Guard against concurrent calls (prevents flickering bug)
+    if (isLoadingEntriesRef.current) {
+      console.log('⚠️ Already loading entries, skipping duplicate call');
+      return;
+    }
+    
     console.log('Date clicked:', displayedYear, displayedMonth, day);
-    setSelectedDate(`${displayedMonth + 1}/${day}/${displayedYear}`);
+    const newSelectedDate = `${displayedMonth + 1}/${day}/${displayedYear}`;
+    setSelectedDate(newSelectedDate);
+    selectedDateRef.current = newSelectedDate;
     setLoadingEntries(true);
+    isLoadingEntriesRef.current = true;
     setShowingSearchResults(false);
     
     try {
@@ -322,8 +344,9 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
       setSelectedDateEntries([]);
     } finally {
       setLoadingEntries(false);
+      isLoadingEntriesRef.current = false;
     }
-  };
+  }, [displayedYear, displayedMonth]);
 
   const handleEdit = (entryId: string) => {
     const entry = selectedDateEntries.find(e => e.id === entryId);
@@ -421,6 +444,7 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
     setSearching(true);
     setShowingSearchResults(true);
     setSelectedDate(null);
+    selectedDateRef.current = null;
 
     try {
       const user = auth().currentUser;
@@ -591,7 +615,7 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   const weeks = generateCalendar();
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={[styles.content, iPadContentStyle(screenWidth)]}>
       {/* Calendar Navigation */}
       <View style={styles.calendarControls}>
         <TouchableOpacity
@@ -890,6 +914,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderColor: colors.borderMedium,
     backgroundColor: colors.bgCard,
     minWidth: 110,
+    minHeight: 44,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -934,6 +959,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   calendarCell: {
     flex: 1,
     aspectRatio: 1,
+    maxHeight: 60,
     borderRightWidth: 1,
     borderBottomWidth: 1,
     borderColor: colors.borderLight,

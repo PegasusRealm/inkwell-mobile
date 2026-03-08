@@ -5,12 +5,10 @@ import {
   Image,
   StyleSheet,
   Animated,
-  Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import {spacing, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
-
-const {width, height} = Dimensions.get('window');
 
 interface SplashScreenProps {
   onFinish: () => void;
@@ -20,11 +18,14 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
   // Theme hook for dynamic theming
   const {colors, isDark} = useTheme();
   
+  // Dynamic dimensions for iPad support
+  const {width, height} = useWindowDimensions();
+  
   // Debug logging
   console.log('🎬🎬🎬 SplashScreen RENDER');
   
-  // Create styles with current theme colors
-  const styles = useMemo(() => createStyles(colors), [colors]);
+  // Create styles with current theme colors and dimensions
+  const styles = useMemo(() => createStyles(colors, width, height), [colors, width, height]);
   
   // Prevent double-calling onFinish
   const hasFinishedRef = useRef(false);
@@ -249,8 +250,13 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
   );
 };
 
-// Dynamic styles based on theme colors
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
+// Dynamic styles based on theme colors and screen dimensions
+const createStyles = (colors: ThemeColors, width: number, height: number) => {
+  // Cap logo/layout sizes for iPad to prevent oversized elements
+  const logoSmallSize = Math.min(360, width * 0.7);
+  const logoLargeSize = Math.min(450, width * 0.8);
+  
+  return StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.bgPrimary,
@@ -265,8 +271,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     height: height,
   },
   smallLogo: {
-    width: 360,
-    height: 360,
+    width: logoSmallSize,
+    height: logoSmallSize,
     marginBottom: spacing.xxl,
   },
   introTextContainer: {
@@ -319,8 +325,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     height: height,
   },
   largeLogo: {
-    width: 450,
-    height: 450,
+    width: logoLargeSize,
+    height: logoLargeSize,
     marginBottom: spacing.sm,
   },
   taglineContainer: {
@@ -342,5 +348,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     fontStyle: 'italic',
   },
 });
+};
 
 export default SplashScreen;

@@ -16,6 +16,7 @@ import {
   Alert,
   ActivityIndicator,
   Image,
+  useWindowDimensions,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
@@ -24,6 +25,7 @@ import appleAuth from '@invertase/react-native-apple-authentication';
 
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
+import {iPadContentStyle} from '../utils/iPad';
 
 interface LoginScreenProps {
   onLoginSuccess: () => void;
@@ -32,6 +34,9 @@ interface LoginScreenProps {
 const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
   // Theme hook for dynamic theming
   const {colors, isDark} = useTheme();
+  
+  // Dynamic screen dimensions for iPad responsiveness
+  const {width: screenWidth} = useWindowDimensions();
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -173,12 +178,23 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       return;
     }
     
+    // Check if Apple Auth is supported on this device (iOS 13+)
+    if (!appleAuth.isSupported) {
+      console.error('Apple Sign-In not supported on this device');
+      Alert.alert('Not Supported', 'Apple Sign-In is not supported on this device.');
+      return;
+    }
+    
     setLoading(true);
     try {
+      console.log('🍎 Starting Apple Sign-In...');
+      console.log('🍎 appleAuth.isSupported:', appleAuth.isSupported);
+      
       const appleAuthRequestResponse = await appleAuth.performRequest({
         requestedOperation: appleAuth.Operation.LOGIN,
         requestedScopes: [appleAuth.Scope.EMAIL, appleAuth.Scope.FULL_NAME],
       });
+      console.log('🍎 Apple auth request completed');
 
       if (!appleAuthRequestResponse.identityToken) {
         throw new Error('Apple Sign-In failed - no identity token returned');
@@ -254,11 +270,31 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       
       onLoginSuccess();
     } catch (error: any) {
-      console.error('Apple sign-in error:', error);
-      if (error.code === '1001') {
-        // User cancelled
+      console.error('🍎 Apple sign-in error:', error);
+      console.error('🍎 Error code:', error.code);
+      console.error('🍎 Error message:', error.message);
+      console.error('🍎 Full error:', JSON.stringify(error, null, 2));
+      
+      // ASAuthorizationError codes:
+      // 1000 = ASAuthorizationErrorUnknown
+      // 1001 = ASAuthorizationErrorCanceled (user cancelled)
+      // 1002 = ASAuthorizationErrorInvalidResponse
+      // 1003 = ASAuthorizationErrorNotHandled
+      // 1004 = ASAuthorizationErrorFailed
+      // 1005 = ASAuthorizationErrorNotInteractive (iOS 16+)
+      
+      if (error.code === '1001' || error.code === 1001) {
+        // User cancelled - silently ignore
+        console.log('🍎 User cancelled Apple Sign-In');
+      } else if (error.code === '1000' || error.code === 1000) {
+        Alert.alert('Apple Sign-In Error', 'An unknown error occurred. Please try again or use another sign-in method.');
+      } else if (error.code === '1004' || error.code === 1004) {
+        Alert.alert('Apple Sign-In Failed', 'Authorization failed. Please check your Apple ID settings and try again.');
+      } else if (error.code === '1005' || error.code === 1005) {
+        // iOS 16+ NotInteractive error - can happen if system is in a restricted state
+        Alert.alert('Apple Sign-In Unavailable', 'Apple Sign-In is temporarily unavailable. Please try again later or use another sign-in method.');
       } else {
-        Alert.alert('Apple Sign-In Failed', error.message || 'An error occurred during Apple sign-in.');
+        Alert.alert('Apple Sign-In Failed', error.message || 'An error occurred during Apple sign-in. Please try again.');
       }
     } finally {
       setLoading(false);
@@ -640,6 +676,9 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.xl,
     paddingTop: 60,
     paddingBottom: spacing.xxxl,
+    maxWidth: 500,
+    alignSelf: 'center',
+    width: '100%',
   },
   logo: {
     width: 120,
@@ -670,6 +709,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 48,
   },
   appleIcon: {
     color: colors.fontWhite,
@@ -693,6 +733,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    minHeight: 48,
   },
   googleIconContainer: {
     width: 20,
@@ -752,6 +793,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: borderRadius.lg,
     alignItems: 'center',
     marginBottom: spacing.xl,
+    minHeight: 48,
+    justifyContent: 'center',
   },
   submitButtonDisabled: {
     opacity: 0.7,

@@ -334,6 +334,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     backgroundColor: 'transparent',
     paddingVertical: 4,
     marginBottom: 4,
+    minHeight: 44,
+    justifyContent: 'center',
   },
   toggleButtonText: {
     color: colors.brandPrimary,
@@ -412,6 +414,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     borderRadius: borderRadius.sm,
     marginTop: spacing.sm,
     alignSelf: 'flex-start',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   markReadButtonText: {
     color: colors.fontWhite,
@@ -487,6 +491,8 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     paddingHorizontal: spacing.md,
     borderRadius: borderRadius.md,
     alignItems: 'center',
+    minHeight: 44,
+    justifyContent: 'center',
   },
   editButton: {
     backgroundColor: colors.brandPrimary,

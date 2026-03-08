@@ -1,15 +1,19 @@
 import React, {useMemo} from 'react';
-import {View, Text, StyleSheet, ScrollView} from 'react-native';
+import {View, Text, StyleSheet, ScrollView, useWindowDimensions} from 'react-native';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
+import {iPadContentStyle} from '../utils/iPad';
 
 // App version - update this when releasing new builds
-const APP_VERSION = '26.039.2';
-const BUILD_NUMBER = '72';
+const APP_VERSION = '26.042.1';
+const BUILD_NUMBER = '74';
 
 export default function InfoScreen() {
   // Theme hook for dynamic theming
   const {colors} = useTheme();
+  
+  // Dynamic dimensions for iPad
+  const {width: screenWidth} = useWindowDimensions();
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -19,6 +23,7 @@ export default function InfoScreen() {
   
   return (
     <ScrollView style={styles.container}>
+      <View style={iPadContentStyle(screenWidth)}>
       {/* Welcome Section */}
       <View style={styles.section}>
         <Text style={styles.title}>Welcome to InkWell</Text>
@@ -186,6 +191,7 @@ export default function InfoScreen() {
       <View style={styles.footer}>
         <Text style={styles.footerText}>InkWell v{appVersion} (Build {buildNumber})</Text>
         <Text style={styles.footerText}>© 2026 Pegasus Realm LLC</Text>
+      </View>
       </View>
     </ScrollView>
   );

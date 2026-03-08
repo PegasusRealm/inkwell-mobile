@@ -15,17 +15,16 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
-  Dimensions,
   SafeAreaView,
   Linking,
+  useWindowDimensions,
 } from 'react-native';
 import { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
 import SubscriptionService, { AllOfferings } from '../services/SubscriptionService';
 import auth from '@react-native-firebase/auth';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+import {iPadContentStyle} from '../utils/iPad';
 
 interface PaywallModalProps {
   visible: boolean;
@@ -45,6 +44,9 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
 }) => {
   // Theme hook for dynamic theming
   const {colors, isDark} = useTheme();
+  
+  // Dynamic dimensions for iPad
+  const {width: screenWidth} = useWindowDimensions();
   
   // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
@@ -225,7 +227,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             <Text style={styles.closeButtonText}>✕</Text>
           </TouchableOpacity>
           
-          <ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
+          <ScrollView contentContainerStyle={[styles.scrollContent, iPadContentStyle(screenWidth)]} showsVerticalScrollIndicator={false}>
 
           {/* Title */}
           <View style={styles.titleSection}>
@@ -351,16 +353,22 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
             <Text style={styles.restoreText}>Restore Purchases</Text>
           </TouchableOpacity>
 
-          {/* Legal */}
+          {/* Legal - Apple requires Terms, Privacy, and EULA links */}
           <View style={styles.legalContainer}>
             <Text style={styles.legalText}>
-              By subscribing, you agree to our{' '}
-              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/terms-conditions/')}>
-                Terms
-              </Text>{' '}and{' '}
-              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy/')}>
+              By subscribing you agree to our{' '}
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/terms-of-service')}>
+                Terms of Service
+              </Text>
+              {', '}
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy')}>
                 Privacy Policy
               </Text>
+              {', and '}
+              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
+                Apple's Standard EULA
+              </Text>
+              .
             </Text>
           </View>
         </ScrollView>
