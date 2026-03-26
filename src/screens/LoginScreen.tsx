@@ -55,7 +55,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
   // This enables the idToken to be returned for Firebase Auth
   React.useEffect(() => {
     GoogleSignin.configure({
-      webClientId: '824582728030-ods5dqf5n1emcg8qd39qk8k0j3ccu9k0.apps.googleusercontent.com',
+      webClientId: '849610731668-vddadhg61m7dla7oh8avmjb2c69l4pbd.apps.googleusercontent.com',
       iosClientId: '849610731668-b3qfvenc3ff0b9e26ea0q326mgq4r98m.apps.googleusercontent.com',
       offlineAccess: true,
     });
