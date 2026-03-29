@@ -10,6 +10,11 @@
         "buildConfiguration": "Release",
         "autoIncrement": false,
         "scheme": "InkWell"
+      },
+      "android": {
+        "buildType": "app-bundle",
+        "credentialsSource": "remote",
+        "autoIncrement": false
       }
     }
   },
