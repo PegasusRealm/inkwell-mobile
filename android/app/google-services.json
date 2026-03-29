@@ -7,27 +7,27 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:849610731668:android:YOUR_ANDROID_APP_ID",
+        "mobilesdk_app_id": "1:849610731668:android:8483dc627097f761674481",
         "android_client_info": {
           "package_name": "com.inkwellmobile"
         }
       },
       "oauth_client": [
         {
-          "client_id": "824582728030-ods5dqf5n1emcg8qd39qk8k0j3ccu9k0.apps.googleusercontent.com",
+          "client_id": "849610731668-vddadhg61m7dla7oh8avmjb2c69l4pbd.apps.googleusercontent.com",
           "client_type": 3
         }
       ],
       "api_key": [
         {
-          "current_key": "AIzaSyDcNvq-Jc-SFSIOuJG59ue6HgwtaLDevNg"
+          "current_key": "AIzaSyCeGw7gEcCA_btcNYx3fwr45FCpmyY4pVQ"
         }
       ],
       "services": {
         "appinvite_service": {
           "other_platform_oauth_client": [
             {
-              "client_id": "824582728030-ods5dqf5n1emcg8qd39qk8k0j3ccu9k0.apps.googleusercontent.com",
+              "client_id": "849610731668-vddadhg61m7dla7oh8avmjb2c69l4pbd.apps.googleusercontent.com",
               "client_type": 3
             },
             {
