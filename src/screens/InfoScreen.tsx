@@ -6,7 +6,7 @@ import {iPadContentStyle} from '../utils/iPad';
 
 // App version - update this when releasing new builds
 const APP_VERSION = '26.042.1';
-const BUILD_NUMBER = '74';
+const BUILD_NUMBER = '80';
 
 export default function InfoScreen() {
   // Theme hook for dynamic theming
