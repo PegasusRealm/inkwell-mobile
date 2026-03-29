@@ -1,0 +1,6 @@
+ios/Pods
+ios/build
+android/build
+android/.gradle
+node_modules_broken
+.git

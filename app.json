@@ -1,4 +1,13 @@
 {
   "name": "InkWellMobile",
-  "displayName": "InkWellMobile"
+  "displayName": "InkWell",
+  "expo": {
+    "name": "InkWell",
+    "slug": "inkwell",
+    "owner": "pegasusrealm",
+    "platforms": ["ios"],
+    "ios": {
+      "bundleIdentifier": "com.pegasusrealm.inkwellmobile"
+    }
+  }
 }

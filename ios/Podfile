@@ -22,126 +22,18 @@ target 'InkWellMobile' do
 
   use_react_native!(
     :path => config[:reactNativePath],
-    # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
   target 'InkWellMobileTests' do
     inherit! :complete
-    # Pods for testing
   end
 
   post_install do |installer|
-    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
-      # :ccache_enabled => true
     )
-    
-    # Fix folly-config.h not found error on clean builds
-    # Create the folly-config.h that RCT-Folly expects (complete iOS config)
-    folly_config_dir = "#{installer.sandbox.root}/RCT-Folly/folly"
-    folly_config_path = "#{folly_config_dir}/folly-config.h"
-    File.open(folly_config_path, 'w') do |f|
-      f.puts '#pragma once'
-      f.puts ''
-      f.puts '// Threading'
-      f.puts '#define FOLLY_HAVE_PTHREAD 1'
-      f.puts '#define FOLLY_HAVE_PTHREAD_ATFORK 1'
-      f.puts ''
-      f.puts '// iOS/mobile platform'
-      f.puts '#define FOLLY_MOBILE 1'
-      f.puts ''
-      f.puts '// Not available on iOS'
-      f.puts '#define FOLLY_HAVE_LIBGFLAGS 0'
-      f.puts '#define FOLLY_HAVE_LIBGLOG 0'
-      f.puts '#define FOLLY_HAVE_VLA 0'
-      f.puts '#define FOLLY_HAVE_WEAK_SYMBOLS 0'
-      f.puts '#define FOLLY_HAVE_LINUX_VDSO 0'
-      f.puts '#define FOLLY_HAVE_MALLOC_USABLE_SIZE 0'
-      f.puts '#define FOLLY_HAVE_MEMRCHR 0'
-      f.puts '#define FOLLY_HAVE_PREADV 0'
-      f.puts '#define FOLLY_HAVE_PWRITEV 0'
-      f.puts '#define FOLLY_HAVE_TFO 0'
-      f.puts '#define FOLLY_HAVE_RECVMMSG 0'
-      f.puts '#define FOLLY_HAVE_SENDMMSG 0'
-      f.puts '#define FOLLY_HAVE_MSG_ERRQUEUE 0'
-      f.puts '#define FOLLY_HAVE_SO_TIMESTAMPING 0'
-      f.puts '#define FOLLY_HAVE_TCP_CC_INFO 0'
-      f.puts '#define FOLLY_HAVE_TCP_INFO 0'
-      f.puts '#define FOLLY_HAVE_GROUP_VARINT 0'
-      f.puts '#define FOLLY_HAVE_EXTRANDOM_SFMT 0'
-      f.puts ''
-      f.puts '// Available on macOS/iOS'
-      f.puts '#define FOLLY_HAVE_CLOCK_GETTIME 1'
-      f.puts '#define FOLLY_HAVE_UNALIGNED_ACCESS 1'
-      f.puts '#define FOLLY_HAVE_SHADOW_LOCAL_WARNINGS 1'
-      f.puts '#define FOLLY_HAVE_NOEXCEPT_FUNCTION_TYPE 1'
-      f.puts ''
-      f.puts '// Coroutines - disabled'
-      f.puts '#define FOLLY_CFG_NO_COROUTINES 1'
-      f.puts ''
-      f.puts '// No jemalloc on iOS'
-      f.puts '/* FOLLY_USE_JEMALLOC not defined */'
-    end
-    Pod::UI.puts "Created folly-config.h at #{folly_config_path}"
-
-    # Fix header search paths for RCT-Folly dependencies (fmt, boost)
-    # NOTE: Do NOT add glog/src globally - it contains demangle.h which
-    # causes RCT-Folly's Demangle.cpp to enable libiberty code paths that
-    # don't exist on iOS. Only React-perflogger needs glog paths (added below).
-    installer.pods_project.targets.each do |target|
-      target.build_configurations.each do |build_config|
-        current_paths = build_config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
-        current_paths = current_paths.join(' ') if current_paths.is_a?(Array)
-        unless current_paths.include?('fmt/include')
-          build_config.build_settings['HEADER_SEARCH_PATHS'] = "#{current_paths} \"${PODS_ROOT}/fmt/include\" \"${PODS_ROOT}/boost\" \"${PODS_ROOT}/DoubleConversion\" \"${PODS_ROOT}/RCT-Folly\""
-        end
-      end
-    end
-
-    # Fix React-perflogger FuseboxTracer compilation issue on Xcode 16/iOS 26
-    # FuseboxTracer.cpp includes folly headers that require experimental/coro/Coroutine.h
-    # which is not included in RCT-Folly. We need to:
-    # 1. Add header search paths so folly headers can be found
-    # 2. Remove fusebox source files from compilation
-    #
-    # Also fix React-Core RCTInspectorNetworkHelper incompatibility with Xcode 26+
-    # The jsinspector_modern API changed - NetworkRequestListener/LoadNetworkResourceRequest
-    # don't exist in the SDK bundled with Xcode 26. This is a dev-only debug file.
-    installer.pods_project.targets.each do |target|
-      if target.name == 'React-perflogger'
-        # Add header search paths for folly
-        target.build_configurations.each do |build_config|
-          current_paths = build_config.build_settings['HEADER_SEARCH_PATHS'] || '$(inherited)'
-          folly_path = '"${PODS_ROOT}/RCT-Folly"'
-          boost_path = '"${PODS_ROOT}/boost"'
-          double_conv_path = '"${PODS_ROOT}/DoubleConversion"'
-          glog_path = '"${PODS_ROOT}/glog/src"'
-          unless current_paths.include?('RCT-Folly')
-            build_config.build_settings['HEADER_SEARCH_PATHS'] = "#{current_paths} #{folly_path} #{boost_path} #{double_conv_path} #{glog_path}"
-          end
-        end
-        
-        # Remove fusebox source files from compilation
-        target.source_build_phase.files.to_a.each do |source_file|
-          if source_file.file_ref && source_file.file_ref.path && source_file.file_ref.path.include?('fusebox')
-            source_file.remove_from_project
-          end
-        end
-      end
-
-      # Remove RCTInspectorNetworkHelper from React-Core (incompatible with Xcode 26+ SDK)
-      if target.name == 'React-Core'
-        target.source_build_phase.files.to_a.each do |source_file|
-          if source_file.file_ref && source_file.file_ref.path &&
-             source_file.file_ref.path.include?('RCTInspectorNetworkHelper')
-            source_file.remove_from_project
-          end
-        end
-      end
-    end
   end
 end

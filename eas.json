@@ -1,0 +1,24 @@
+{
+  "cli": {
+    "version": ">= 7.0.0",
+    "appVersionSource": "local"
+  },
+  "build": {
+    "production": {
+      "ios": {
+        "image": "macos-sequoia-15.3-xcode-16.2",
+        "buildConfiguration": "Release",
+        "autoIncrement": false
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "agrimm979@gmail.com",
+        "appleTeamId": "GULD29SRW8",
+        "language": "en-US"
+      }
+    }
+  }
+}
