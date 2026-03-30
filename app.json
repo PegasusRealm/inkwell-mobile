@@ -5,9 +5,17 @@
     "name": "InkWell",
     "slug": "inkwell",
     "owner": "pegasusrealm",
-    "platforms": ["ios"],
+    "platforms": ["ios", "android"],
     "ios": {
       "bundleIdentifier": "com.pegasusrealm.inkwellmobile"
+    },
+    "android": {
+      "package": "com.inkwellmobile"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "3ee4a91f-64ec-4bf4-a72a-44514b1d0c3a"
+      }
     }
   }
 }
