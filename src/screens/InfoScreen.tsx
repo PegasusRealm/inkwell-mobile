@@ -103,27 +103,20 @@ export default function InfoScreen() {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Subscription Tiers</Text>
 
+        {/* Connect tier removed 2026-07-04 (retired 2026-07-01). Prices live
+            in the stores via the paywall — never hardcoded here again. */}
         <View style={styles.tier}>
-          <Text style={styles.tierTitle}>🆓 Free</Text>
+          <Text style={styles.tierTitle}>Free</Text>
           <Text style={styles.tierText}>
-            Unlimited journaling with 3 AI interactions per day. Perfect for 
-            getting started with your journaling practice.
+            A complete journal: every capture mode, gratitude practices, goals, and 3 Sophy interactions per day.
           </Text>
         </View>
 
         <View style={styles.tier}>
-          <Text style={styles.tierTitle}>⭐ Plus ($6.99/mo)</Text>
+          <Text style={styles.tierTitle}>Plus</Text>
           <Text style={styles.tierText}>
-            Unlimited AI prompts, reflections, and Sophy chats. Unlock Smart 
-            Search, voice transcription, and email insights from Sophy.
-          </Text>
-        </View>
-
-        <View style={styles.tier}>
-          <Text style={styles.tierTitle}>💜 Connect ($29.99/mo)</Text>
-          <Text style={styles.tierText}>
-            Everything in Plus, plus work with certified InkWell coaches who 
-            can review your entries and provide professional support.
+            Unlimited Sophy prompts and reflections, voice cleanup and analysis, search by meaning, insight
+            reports, attachments, and export. Pricing is shown on the upgrade screen.
           </Text>
         </View>
       </View>

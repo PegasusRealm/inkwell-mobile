@@ -1,11 +1,14 @@
 /**
- * InkWell Paywall Modal
- * Plus subscription upgrade screen with Connect web link
- * 
- * Updated 2026-02-06: Connect purchases via web only (Apple compliance)
+ * PaywallModal — InkWell Plus upgrade (v2 rebuild, 2026-07-04).
+ * Single tier: Plus. Connect selling REMOVED (tier retired 2026-07-01) —
+ * legacy Connect subscribers keep their entitlements via useSubscription;
+ * we stopped selling, not honoring.
+ * Prices come live from RevenueCat priceString (store-console truth, never
+ * hardcoded). Apple-required disclosures preserved (trial terms, auto-renew,
+ * restore, Terms/Privacy/EULA links).
  */
 
-import React, { useEffect, useState, useRef, useMemo } from 'react';
+import React, {useEffect, useState, useMemo} from 'react';
 import {
   Modal,
   View,
@@ -19,11 +22,12 @@ import {
   Linking,
   useWindowDimensions,
 } from 'react-native';
-import { PurchasesOffering, PurchasesPackage } from 'react-native-purchases';
-import SubscriptionService, { AllOfferings } from '../services/SubscriptionService';
+import {PurchasesPackage} from 'react-native-purchases';
+import SubscriptionService, {AllOfferings} from '../services/SubscriptionService';
 import auth from '@react-native-firebase/auth';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
+import {IWButton} from './kit';
 import {iPadContentStyle} from '../utils/iPad';
 
 interface PaywallModalProps {
@@ -33,8 +37,14 @@ interface PaywallModalProps {
   featureBlocked?: string;
 }
 
-// Connect tier is web-only per Apple guidelines
-type SelectedTier = 'plus';
+const PLUS_FEATURES = [
+  'Unlimited Sophy prompts and reflections',
+  'Voice cleanup and emotional analysis',
+  'Weekly and monthly insight reports',
+  'File attachments',
+  'SMS reminders and email insights',
+  'Full journal export',
+];
 
 const PaywallModal: React.FC<PaywallModalProps> = ({
   visible,
@@ -42,25 +52,16 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   onPurchaseSuccess,
   featureBlocked,
 }) => {
-  // Theme hook for dynamic theming
-  const {colors, isDark} = useTheme();
-  
-  // Dynamic dimensions for iPad
+  const {colors} = useTheme();
   const {width: screenWidth} = useWindowDimensions();
-  
-  // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
-  
+
   const [offerings, setOfferings] = useState<AllOfferings | null>(null);
   const [loading, setLoading] = useState(false);
   const [purchasing, setPurchasing] = useState(false);
-  const [selectedTier, setSelectedTier] = useState<SelectedTier>('plus');
-  const [selectedPlusPackage, setSelectedPlusPackage] = useState<PurchasesPackage | null>(null);
-  const [connectPackage, setConnectPackage] = useState<PurchasesPackage | null>(null);
+  const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasAttemptedLoad, setHasAttemptedLoad] = useState(false);
-
-  console.log('🔵 PaywallModal RENDER - visible:', visible, 'hasAttemptedLoad:', hasAttemptedLoad);
 
   // Load offerings when modal opens
   useEffect(() => {
@@ -77,32 +78,17 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
         await SubscriptionService.initialize(user.uid);
         const fetchedOfferings = await SubscriptionService.getAllOfferings();
 
-        if (fetchedOfferings.plus || fetchedOfferings.connect) {
+        if (fetchedOfferings.plus) {
           setOfferings(fetchedOfferings);
-          
-          // Set default selections
-          // For Plus: default to annual (better LTV)
-          if (fetchedOfferings.plus) {
-            const annual = fetchedOfferings.plus.availablePackages.find(
-              p => p.packageType === 'ANNUAL'
-            );
-            const monthly = fetchedOfferings.plus.availablePackages.find(
-              p => p.packageType === 'MONTHLY'
-            );
-            setSelectedPlusPackage(annual || monthly || fetchedOfferings.plus.availablePackages[0]);
-          }
-          
-          // For Connect: just the monthly
-          if (fetchedOfferings.connect) {
-            setConnectPackage(fetchedOfferings.connect.availablePackages[0]);
-          }
-          
-          console.log('✅ Paywall loaded offerings');
+          // Default to annual (better LTV), else monthly, else first available
+          const annual = fetchedOfferings.plus.availablePackages.find(p => p.packageType === 'ANNUAL');
+          const monthly = fetchedOfferings.plus.availablePackages.find(p => p.packageType === 'MONTHLY');
+          setSelectedPackage(annual || monthly || fetchedOfferings.plus.availablePackages[0]);
         } else {
           setError('No subscription plans available');
         }
       } catch (err: any) {
-        console.error('❌ Paywall error:', err);
+        console.error('Paywall error:', err);
         setError(err.message || 'Failed to load subscriptions');
       } finally {
         setLoading(false);
@@ -118,11 +104,9 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
       const timer = setTimeout(() => {
         setHasAttemptedLoad(false);
         setOfferings(null);
-        setSelectedPlusPackage(null);
-        setConnectPackage(null);
+        setSelectedPackage(null);
         setError(null);
         setLoading(false);
-        setSelectedTier('plus');
       }, 500);
       return () => clearTimeout(timer);
     }
@@ -134,22 +118,21 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
   };
 
   const handlePurchase = async () => {
-    const packageToPurchase = selectedTier === 'plus' ? selectedPlusPackage : connectPackage;
-    if (!packageToPurchase) return;
+    if (!selectedPackage) return;
 
     try {
       setPurchasing(true);
-      await SubscriptionService.purchasePackage(packageToPurchase);
-      
-      const tierName = selectedTier === 'plus' ? 'InkWell Plus' : 'InkWell Connect';
-      Alert.alert(
-        `🎉 Welcome to ${tierName}!`,
-        selectedTier === 'plus' 
-          ? 'Enjoy unlimited AI prompts, SMS reminders, and insights!'
-          : 'You now have access to coach support!',
+      await SubscriptionService.purchasePackage(selectedPackage);
 
-        [{ text: 'Start Using', onPress: () => { onPurchaseSuccess?.(); onClose(); } }],
-      );
+      Alert.alert('Welcome to InkWell Plus', 'Your upgrade is active.', [
+        {
+          text: 'Start Using',
+          onPress: () => {
+            onPurchaseSuccess?.();
+            onClose();
+          },
+        },
+      ]);
     } catch (error: any) {
       if (error.code !== 'PURCHASE_CANCELLED') {
         Alert.alert('Purchase Failed', error.message || 'Please try again');
@@ -163,8 +146,8 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
     try {
       setPurchasing(true);
       await SubscriptionService.restorePurchases();
-      Alert.alert('Purchases Restored', 'Your previous purchases have been restored!', [
-        { text: 'OK', onPress: onClose },
+      Alert.alert('Purchases Restored', 'Your previous purchases have been restored.', [
+        {text: 'OK', onPress: onClose},
       ]);
     } catch (error) {
       Alert.alert('Restore Failed', 'No purchases found to restore');
@@ -173,25 +156,14 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
     }
   };
 
-  // Local FeatureChip component that has access to styles
-  const FeatureChip: React.FC<{ icon: string; text: string }> = ({ icon, text }) => (
-    <View style={styles.featureChip}>
-      <Text style={styles.featureChipIcon}>{icon}</Text>
-      <Text style={styles.featureChipText}>{text}</Text>
-    </View>
-  );
-
   // Error state
   if (error && !loading) {
     return (
       <Modal visible={visible} transparent animationType="slide">
         <View style={styles.container}>
           <View style={styles.loadingContainer}>
-            <Text style={styles.errorIcon}>⚠️</Text>
             <Text style={styles.errorText}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
-              <Text style={styles.retryButtonText}>Try Again</Text>
-            </TouchableOpacity>
+            <IWButton title="Try Again" onPress={handleRetry} />
             <TouchableOpacity style={styles.closeTextButton} onPress={onClose}>
               <Text style={styles.closeTextButtonText}>Close</Text>
             </TouchableOpacity>
@@ -215,70 +187,55 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
     );
   }
 
-  const currentPackage = selectedTier === 'plus' ? selectedPlusPackage : connectPackage;
-  const isPlusAnnual = selectedPlusPackage?.packageType === 'ANNUAL';
+  const isAnnualSelected = selectedPackage?.packageType === 'ANNUAL';
 
   return (
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.container}>
-          {/* Fixed Close Button - outside ScrollView for easy access */}
-          <TouchableOpacity onPress={onClose} style={styles.closeButton} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-            <Text style={styles.closeButtonText}>✕</Text>
-          </TouchableOpacity>
-          
-          <ScrollView contentContainerStyle={[styles.scrollContent, iPadContentStyle(screenWidth)]} showsVerticalScrollIndicator={false}>
-
-          {/* Title */}
-          <View style={styles.titleSection}>
-            <Text style={styles.title}>Choose Your Plan</Text>
-            {featureBlocked && (
-              <Text style={styles.subtitle}>{featureBlocked} requires a subscription</Text>
-            )}
-          </View>
-
-          {/* ═══════════ PLUS TIER ═══════════ */}
+          {/* Fixed close button */}
           <TouchableOpacity
-            style={[styles.tierCard, selectedTier === 'plus' && styles.tierCardSelected]}
-            onPress={() => setSelectedTier('plus')}
-            activeOpacity={0.8}
-          >
-            <View style={styles.tierHeader}>
-              <Text style={styles.tierBadge}>INKWELL PLUS</Text>
-              {selectedTier === 'plus' && <View style={styles.selectedDot} />}
+            onPress={onClose}
+            style={styles.closeButton}
+            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+            <Text style={styles.closeButtonText}>×</Text>
+          </TouchableOpacity>
+
+          <ScrollView
+            contentContainerStyle={[styles.scrollContent, iPadContentStyle(screenWidth)]}
+            showsVerticalScrollIndicator={false}>
+            {/* Title */}
+            <View style={styles.titleSection}>
+              <Text style={styles.eyebrow}>INKWELL PLUS</Text>
+              <Text style={styles.title}>More from a journal that learns you</Text>
+              {featureBlocked && <Text style={styles.subtitle}>{featureBlocked} requires a subscription</Text>}
             </View>
 
-            <View style={styles.featuresRow}>
-              <FeatureChip icon="🤖" text="Unlimited AI" />
-              <FeatureChip icon="🎙️" text="Voice Analysis" />
-              <FeatureChip icon="🔔" text="Reminders" />
-              <FeatureChip icon="📎" text="File Attachments" />
-              <FeatureChip icon="📊" text="Insights" />
-              <FeatureChip icon="📤" text="Export" />
+            {/* What Plus adds */}
+            <View style={styles.featureList}>
+              {PLUS_FEATURES.map(feature => (
+                <View key={feature} style={styles.featureRow}>
+                  <View style={styles.featureDot} />
+                  <Text style={styles.featureText}>{feature}</Text>
+                </View>
+              ))}
             </View>
 
-            {/* Plus pricing options */}
+            {/* Pricing options — live store prices, never hardcoded */}
             {offerings.plus && (
               <View style={styles.pricingOptions}>
-                {offerings.plus.availablePackages.map((pkg) => {
+                {offerings.plus.availablePackages.map(pkg => {
                   const isAnnual = pkg.packageType === 'ANNUAL';
-                  const isSelected = selectedPlusPackage?.identifier === pkg.identifier;
-                  
+                  const isSelected = selectedPackage?.identifier === pkg.identifier;
+
                   return (
                     <TouchableOpacity
                       key={pkg.identifier}
-                      style={[
-                        styles.priceOption,
-                        isSelected && selectedTier === 'plus' && styles.priceOptionSelected,
-                      ]}
-                      onPress={() => {
-                        setSelectedTier('plus');
-                        setSelectedPlusPackage(pkg);
-                      }}
-                    >
+                      style={[styles.priceOption, isSelected && styles.priceOptionSelected]}
+                      onPress={() => setSelectedPackage(pkg)}>
                       <View style={styles.priceOptionLeft}>
-                        <View style={[styles.radioOuter, isSelected && selectedTier === 'plus' && styles.radioOuterSelected]}>
-                          {isSelected && selectedTier === 'plus' && <View style={styles.radioInner} />}
+                        <View style={[styles.radioOuter, isSelected && styles.radioOuterSelected]}>
+                          {isSelected && <View style={styles.radioInner} />}
                         </View>
                         <View>
                           <Text style={styles.priceLabel}>{isAnnual ? 'Annual' : 'Monthly'}</Text>
@@ -295,83 +252,64 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
               </View>
             )}
 
-            {/* Plus CTA */}
-            {selectedTier === 'plus' && (
-              <View style={styles.trialBadge}>
-                <Text style={styles.trialBadgeText}>✨ 7-Day Free Trial</Text>
-              </View>
-            )}
-          </TouchableOpacity>
-
-          {/* ═══════════ CONNECT TIER - WEB ONLY ═══════════ */}
-          <View style={[styles.tierCard, styles.connectCard, styles.connectWebOnly]}>
-            <View style={styles.tierHeader}>
-              <Text style={[styles.tierBadge, styles.connectBadge]}>INKWELL CONNECT</Text>
+            {/* Trial note */}
+            <View style={styles.trialBadge}>
+              <Text style={styles.trialBadgeText}>7-day free trial</Text>
             </View>
 
-            <Text style={styles.connectSubtitle}>Everything in Plus, plus human support</Text>
+            {/* CTA */}
+            <IWButton
+              title="Start 7-Day Free Trial"
+              onPress={handlePurchase}
+              loading={purchasing}
+              disabled={purchasing || !selectedPackage}
+              style={styles.ctaButton}
+            />
 
-            <View style={styles.featuresRow}>
-              <FeatureChip icon="🧠" text="All Plus Features" />
-              <FeatureChip icon="👤" text="1 Message/Week" />
-              <FeatureChip icon="🤝" text="Choose Your Coach" />
-              <FeatureChip icon="⚡" text="Priority Support" />
-            </View>
+            {/* The free version stays a real journal (positioning law) */}
+            <Text style={styles.freeNote}>
+              The free version stays a complete journal. Upgrade if you want more.
+            </Text>
 
-            <TouchableOpacity
-              style={styles.webLinkButton}
-              onPress={() => Linking.openURL('https://inkwelljournal.io')}
-            >
-              <Text style={styles.webLinkButtonText}>🌐 Subscribe on inkwelljournal.io</Text>
+            {/* Fine print - Apple required disclosures */}
+            <Text style={styles.finePrint}>
+              7-day free trial, then {selectedPackage?.product.priceString}
+              {isAnnualSelected ? '/year' : '/month'}.{'\n'}
+              Subscription auto-renews until cancelled. Cancel anytime in Settings, Apple ID, Subscriptions.
+            </Text>
+
+            {/* Restore */}
+            <TouchableOpacity onPress={handleRestore} disabled={purchasing}>
+              <Text style={styles.restoreText}>Restore Purchases</Text>
             </TouchableOpacity>
-            <Text style={styles.webLinkNote}>
-              Connect subscriptions are managed through our website
-            </Text>
-          </View>
 
-          {/* CTA Button */}
-          <TouchableOpacity
-            style={[styles.ctaButton, purchasing && styles.ctaButtonDisabled]}
-            onPress={handlePurchase}
-            disabled={purchasing || !currentPackage}
-          >
-            {purchasing ? (
-              <ActivityIndicator color="white" />
-            ) : (
-              <Text style={styles.ctaButtonText}>Start 7-Day Free Trial</Text>
-            )}
-          </TouchableOpacity>
-
-          {/* Fine print - Apple required disclosures */}
-          <Text style={styles.finePrint}>
-            7-day free trial, then {currentPackage?.product.priceString}{isPlusAnnual ? '/year' : '/month'}.{'\n'}
-            Subscription auto-renews until cancelled. Cancel anytime in Settings → Apple ID → Subscriptions.
-          </Text>
-
-          {/* Restore */}
-          <TouchableOpacity onPress={handleRestore} disabled={purchasing}>
-            <Text style={styles.restoreText}>Restore Purchases</Text>
-          </TouchableOpacity>
-
-          {/* Legal - Apple requires Terms, Privacy, and EULA links */}
-          <View style={styles.legalContainer}>
-            <Text style={styles.legalText}>
-              By subscribing you agree to our{' '}
-              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/terms-of-service')}>
-                Terms of Service
+            {/* Legal - Apple requires Terms, Privacy, and EULA links */}
+            <View style={styles.legalContainer}>
+              <Text style={styles.legalText}>
+                By subscribing you agree to our{' '}
+                <Text
+                  style={styles.legalLink}
+                  onPress={() => Linking.openURL('https://pegasusrealm.com/terms-of-service')}>
+                  Terms of Service
+                </Text>
+                {', '}
+                <Text
+                  style={styles.legalLink}
+                  onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy')}>
+                  Privacy Policy
+                </Text>
+                {', and '}
+                <Text
+                  style={styles.legalLink}
+                  onPress={() =>
+                    Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')
+                  }>
+                  Apple's Standard EULA
+                </Text>
+                .
               </Text>
-              {', '}
-              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy')}>
-                Privacy Policy
-              </Text>
-              {', and '}
-              <Text style={styles.legalLink} onPress={() => Linking.openURL('https://www.apple.com/legal/internet-services/itunes/dev/stdeula/')}>
-                Apple's Standard EULA
-              </Text>
-              .
-            </Text>
-          </View>
-        </ScrollView>
+            </View>
+          </ScrollView>
         </View>
       </SafeAreaView>
     </Modal>
@@ -379,329 +317,244 @@ const PaywallModal: React.FC<PaywallModalProps> = ({
 };
 
 // Dynamic styles based on theme colors
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colors.bgCard,
-  },
-  container: {
-    flex: 1,
-    backgroundColor: colors.bgCard,
-  },
-  closeButton: {
-    position: 'absolute',
-    top: spacing.sm,
-    right: spacing.md,
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.bgMuted,
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 10,
-  },
-  closeButtonText: {
-    fontSize: fontSize.xl,
-    color: colors.fontSecondary,
-    fontWeight: '600',
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: spacing.lg,
-  },
-  loadingText: {
-    marginTop: spacing.md,
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-  },
-  errorIcon: {
-    fontSize: 48,
-    marginBottom: spacing.md,
-  },
-  errorText: {
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-    textAlign: 'center',
-    marginBottom: spacing.lg,
-  },
-  retryButton: {
-    backgroundColor: colors.brandPrimary,
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-    borderRadius: borderRadius.md,
-    marginBottom: spacing.sm,
-  },
-  retryButtonText: {
-    color: colors.fontWhite,
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.buttonBold,
-  },
-  closeTextButton: {
-    paddingHorizontal: spacing.xl,
-    paddingVertical: spacing.sm,
-  },
-  closeTextButtonText: {
-    color: colors.fontSecondary,
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.button,
-  },
-  scrollContent: {
-    padding: spacing.lg,
-    paddingTop: spacing.xxxl + spacing.lg, // Extra top padding for close button
-    paddingBottom: 40,
-  },
-  titleSection: {
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  title: {
-    fontSize: fontSize.xxxl,
-    fontFamily: fontFamily.header,
-    color: colors.brandPrimary,
-    marginBottom: 4,
-  },
-  subtitle: {
-    fontSize: fontSize.base,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-    textAlign: 'center',
-  },
-  
-  // Tier Cards
-  tierCard: {
-    borderWidth: 2,
-    borderColor: colors.borderMedium,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.md,
-    backgroundColor: colors.bgCard,
-  },
-  tierCardSelected: {
-    borderColor: colors.tierPlus,
-    backgroundColor: colors.tierPlus + '10',
-  },
-  connectCard: {
-    borderColor: colors.borderMedium,
-  },
-  tierHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  tierBadge: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.buttonBold,
-    color: colors.tierPlus,
-    letterSpacing: 1,
-  },
-  connectBadge: {
-    color: colors.tierConnect,
-  },
-  selectedDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.tierPlus,
-  },
-  connectSubtitle: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-    marginBottom: spacing.sm,
-  },
-  
-  // Features Row
-  featuresRow: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    marginBottom: spacing.md,
-    gap: spacing.xs,
-  },
-  featureChip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.bgMuted,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 6,
-    borderRadius: borderRadius.lg,
-  },
-  featureChipIcon: {
-    fontSize: fontSize.sm,
-    marginRight: 4,
-  },
-  featureChipText: {
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.buttonBold,
-    color: colors.fontMain,
-  },
-  
-  // Pricing Options
-  pricingOptions: {
-    gap: spacing.xs,
-  },
-  priceOption: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1.5,
-    borderColor: colors.borderMedium,
-    backgroundColor: colors.bgCard,
-  },
-  priceOptionSelected: {
-    borderColor: colors.tierPlus,
-    backgroundColor: colors.tierPlus + '10',
-  },
-  priceOptionLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  priceOptionRight: {
-    alignItems: 'flex-end',
-  },
-  radioOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: colors.borderMedium,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  radioOuterSelected: {
-    borderColor: colors.tierPlus,
-  },
-  radioInner: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: colors.tierPlus,
-  },
-  priceLabel: {
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.buttonBold,
-    color: colors.fontMain,
-  },
-  savingsText: {
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.buttonBold,
-    color: colors.accentGrowth,
-    marginTop: 2,
-  },
-  priceAmount: {
-    fontSize: fontSize.xl,
-    fontFamily: fontFamily.header,
-    color: colors.tierPlus,
-  },
-  pricePeriod: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-  },
-  
-  // Trial Badge
-  trialBadge: {
-    backgroundColor: colors.accentGrowth + '20',
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: 20,
-    alignSelf: 'center',
-    marginTop: spacing.sm,
-  },
-  trialBadgeText: {
-    color: colors.accentGrowth,
-    fontFamily: fontFamily.buttonBold,
-    fontSize: fontSize.sm,
-  },
-  
-  // Connect Pricing (kept for reference, now using web link)
-  connectPricing: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: spacing.sm,
-    borderRadius: borderRadius.md,
-    borderWidth: 1.5,
-    borderColor: colors.tierConnect,
-    backgroundColor: colors.tierConnect + '10',
-  },
-  
-  // Connect Web Only styles
-  connectWebOnly: {
-    opacity: 0.95,
-  },
-  webLinkButton: {
-    backgroundColor: colors.tierConnect,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    marginTop: spacing.sm,
-  },
-  webLinkButtonText: {
-    color: colors.fontWhite,
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.buttonBold,
-  },
-  webLinkNote: {
-    textAlign: 'center',
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-    marginTop: spacing.xs,
-    fontStyle: 'italic',
-  },
-  
-  // CTA
-  ctaButton: {
-    backgroundColor: colors.tierPlus,
-    padding: spacing.lg,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    marginTop: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  ctaButtonDisabled: {
-    opacity: 0.6,
-  },
-  ctaButtonText: {
-    color: colors.fontWhite,
-    fontSize: fontSize.lg,
-    fontFamily: fontFamily.buttonBold,
-  },
-  finePrint: {
-    textAlign: 'center',
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-    marginBottom: spacing.lg,
-  },
-  restoreText: {
-    textAlign: 'center',
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.buttonBold,
-    color: colors.tierPlus,
-    marginBottom: spacing.lg,
-  },
-  legalContainer: {
-    marginTop: spacing.xs,
-  },
-  legalText: {
-    textAlign: 'center',
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.body,
-    color: colors.fontMuted,
-  },
-  legalLink: {
-    color: colors.brandPrimary,
-    textDecorationLine: 'underline',
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safeArea: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+    },
+    container: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+    },
+    closeButton: {
+      position: 'absolute',
+      top: spacing.sm,
+      right: spacing.md,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: colors.bgMuted,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 10,
+    },
+    closeButtonText: {
+      fontSize: fontSize.xxl,
+      color: colors.fontSecondary,
+      lineHeight: fontSize.xxl + 2,
+    },
+    loadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: spacing.lg,
+      gap: spacing.sm,
+    },
+    loadingText: {
+      marginTop: spacing.md,
+      fontSize: fontSize.md,
+      fontFamily: fontFamily.body,
+      color: colors.fontSecondary,
+    },
+    errorText: {
+      fontSize: fontSize.md,
+      fontFamily: fontFamily.body,
+      color: colors.fontSecondary,
+      textAlign: 'center',
+      marginBottom: spacing.lg,
+    },
+    closeTextButton: {
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.sm,
+    },
+    closeTextButtonText: {
+      color: colors.fontSecondary,
+      fontSize: fontSize.md,
+      fontFamily: fontFamily.button,
+    },
+    scrollContent: {
+      padding: spacing.lg,
+      paddingTop: spacing.xxxl + spacing.lg,
+      paddingBottom: 40,
+    },
+    titleSection: {
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
+    eyebrow: {
+      fontFamily: fontFamily.bodyBold,
+      fontSize: fontSize.xs,
+      color: colors.tierPlus,
+      letterSpacing: 2,
+      marginBottom: spacing.sm,
+    },
+    title: {
+      fontSize: fontSize.xxl,
+      fontFamily: fontFamily.header,
+      color: colors.fontMain,
+      textAlign: 'center',
+      marginBottom: 4,
+    },
+    subtitle: {
+      fontSize: fontSize.base,
+      fontFamily: fontFamily.body,
+      color: colors.fontSecondary,
+      textAlign: 'center',
+      marginTop: spacing.xs,
+    },
+
+    // Feature list — quiet rows, no emoji chips
+    featureList: {
+      backgroundColor: colors.bgCard,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      borderRadius: borderRadius.lg,
+      padding: spacing.base,
+      marginBottom: spacing.lg,
+      gap: spacing.sm,
+    },
+    featureRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    featureDot: {
+      width: 7,
+      height: 7,
+      borderRadius: 4,
+      backgroundColor: colors.tierPlus,
+    },
+    featureText: {
+      flex: 1,
+      fontSize: fontSize.sm,
+      fontFamily: fontFamily.body,
+      color: colors.fontMain,
+      lineHeight: 20,
+    },
+
+    // Pricing options
+    pricingOptions: {
+      gap: spacing.sm,
+      marginBottom: spacing.md,
+    },
+    priceOption: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: spacing.base,
+      borderRadius: borderRadius.lg,
+      borderWidth: 1.5,
+      borderColor: colors.borderMedium,
+      backgroundColor: colors.bgCard,
+    },
+    priceOptionSelected: {
+      borderColor: colors.tierPlus,
+      backgroundColor: colors.sophyTint,
+    },
+    priceOptionLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    priceOptionRight: {
+      alignItems: 'flex-end',
+    },
+    radioOuter: {
+      width: 22,
+      height: 22,
+      borderRadius: 11,
+      borderWidth: 2,
+      borderColor: colors.borderMedium,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    radioOuterSelected: {
+      borderColor: colors.tierPlus,
+    },
+    radioInner: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      backgroundColor: colors.tierPlus,
+    },
+    priceLabel: {
+      fontSize: fontSize.md,
+      fontFamily: fontFamily.buttonBold,
+      color: colors.fontMain,
+    },
+    savingsText: {
+      fontSize: fontSize.xs,
+      fontFamily: fontFamily.buttonBold,
+      color: colors.accentGrowth,
+      marginTop: 2,
+    },
+    priceAmount: {
+      fontSize: fontSize.xl,
+      fontFamily: fontFamily.header,
+      color: colors.fontMain,
+    },
+    pricePeriod: {
+      fontSize: fontSize.sm,
+      fontFamily: fontFamily.body,
+      color: colors.fontSecondary,
+    },
+
+    // Trial
+    trialBadge: {
+      backgroundColor: colors.accentGrowth + '20',
+      paddingVertical: spacing.xs,
+      paddingHorizontal: spacing.md,
+      borderRadius: 20,
+      alignSelf: 'center',
+      marginBottom: spacing.md,
+    },
+    trialBadgeText: {
+      color: colors.accentGrowth,
+      fontFamily: fontFamily.buttonBold,
+      fontSize: fontSize.sm,
+    },
+
+    // CTA
+    ctaButton: {
+      marginBottom: spacing.md,
+    },
+    freeNote: {
+      textAlign: 'center',
+      fontSize: fontSize.sm,
+      fontFamily: fontFamily.body,
+      color: colors.fontSecondary,
+      marginBottom: spacing.md,
+    },
+    finePrint: {
+      textAlign: 'center',
+      fontSize: fontSize.xs,
+      fontFamily: fontFamily.body,
+      color: colors.fontMuted,
+      lineHeight: 18,
+      marginBottom: spacing.lg,
+    },
+    restoreText: {
+      textAlign: 'center',
+      fontSize: fontSize.md,
+      fontFamily: fontFamily.buttonBold,
+      color: colors.brandPrimary,
+      marginBottom: spacing.lg,
+    },
+    legalContainer: {
+      marginTop: spacing.xs,
+    },
+    legalText: {
+      textAlign: 'center',
+      fontSize: fontSize.xs,
+      fontFamily: fontFamily.body,
+      color: colors.fontMuted,
+      lineHeight: 18,
+    },
+    legalLink: {
+      color: colors.brandPrimary,
+      textDecorationLine: 'underline',
+    },
+  });
 
 export default PaywallModal;
