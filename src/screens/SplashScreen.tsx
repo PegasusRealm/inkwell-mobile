@@ -189,12 +189,11 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
             },
           ]}>
           <Text style={styles.introTitle}>
-            Welcome to Your Journey
+            Welcome to <Text style={styles.introTitleEm}>Your</Text> Journey
           </Text>
           <Text style={styles.introText}>
-            Journaling and Manifesting{'\n'}
-            with psychology-trained AI{'\n'}
-            and human support
+            A journal that learns you.{'\n'}
+            Goals that grow from your values.
           </Text>
         </Animated.View>
         
@@ -243,7 +242,10 @@ const SplashScreen: React.FC<SplashScreenProps> = ({onFinish}) => {
               opacity: taglineOpacity,
             },
           ]}>
-          <Text style={styles.tagline}>For the thinkers and the forgetters.</Text>
+          <Text style={styles.tagline}>
+            For the <Text style={styles.taglineEm}>Thinkers</Text> and the{' '}
+            <Text style={styles.taglineEm}>Forgetters</Text>.
+          </Text>
         </Animated.View>
       </Animated.View>
     </View>
@@ -283,10 +285,16 @@ const createStyles = (colors: ThemeColors, width: number, height: number) => {
   introTitle: {
     fontFamily: fontFamily.header,
     fontSize: fontSize.xxxl,
-    color: colors.brandPrimary,
+    color: colors.fontMain,
     textAlign: 'center',
     marginBottom: spacing.lg,
     letterSpacing: 0.5,
+  },
+  // Italic-teal emphasis is reserved for the user's words (Your)
+  introTitleEm: {
+    fontFamily: fontFamily.headerItalic,
+    fontStyle: 'italic',
+    color: colors.brandLight,
   },
   introText: {
     fontFamily: fontFamily.body,
@@ -341,11 +349,16 @@ const createStyles = (colors: ThemeColors, width: number, height: number) => {
     letterSpacing: 1,
   },
   tagline: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.serif,
     fontSize: fontSize.lg,
     color: colors.fontSecondary,
     textAlign: 'center',
+  },
+  // Thinkers / Forgetters — words that describe the user wear the teal italic
+  taglineEm: {
+    fontFamily: fontFamily.serifItalic,
     fontStyle: 'italic',
+    color: colors.brandLight,
   },
 });
 };

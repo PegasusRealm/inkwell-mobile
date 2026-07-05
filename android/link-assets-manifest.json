@@ -3,19 +3,55 @@
   "data": [
     {
       "path": "assets/fonts/Alice-Regular.ttf",
-      "sha1": "f457bccf58dd115576d7d855d17afd9187791fb1"
+      "sha1": "6ea6d19788215f9c4cc455d46cc5c8cad5a2512d"
     },
     {
       "path": "assets/fonts/Lato-Bold.ttf",
       "sha1": "a3a53a436baaf6dc2e7a05f05866a761c214692b"
     },
     {
-      "path": "assets/fonts/PlayfairDisplay-Bold.ttf",
-      "sha1": "83a180802529fd1f7702f4e6308b87fdbd7b5a96"
-    },
-    {
       "path": "assets/fonts/Lato-Regular.ttf",
       "sha1": "29eb192629b0bbb41a7b7f49ab2aec82d4261921"
+    },
+    {
+      "path": "assets/fonts/Manrope-Bold.ttf",
+      "sha1": "dbc0b874ad8b9f3415d0e9b4e22907890ca72327"
+    },
+    {
+      "path": "assets/fonts/Manrope-Regular.ttf",
+      "sha1": "3f36e4904a42d23273ac346047c1b6bcf067ccfc"
+    },
+    {
+      "path": "assets/fonts/Manrope-SemiBold.ttf",
+      "sha1": "f7a023cd6c102b2ffa8bf729579552445970d62d"
+    },
+    {
+      "path": "assets/fonts/Newsreader14pt-Italic.ttf",
+      "sha1": "e9bf04feb706490123bbee62825f3084eb0bb240"
+    },
+    {
+      "path": "assets/fonts/Newsreader14pt-Medium.ttf",
+      "sha1": "4112d192a551b5385ed19e1c48cd1cbbd03db2b9"
+    },
+    {
+      "path": "assets/fonts/Newsreader14pt-Regular.ttf",
+      "sha1": "b5af2222aba28b2061dc0a5684d1d878f67da289"
+    },
+    {
+      "path": "assets/fonts/Newsreader36pt-Italic.ttf",
+      "sha1": "92122e1949f33017d227fa29b6847da929a7d2be"
+    },
+    {
+      "path": "assets/fonts/Newsreader36pt-Medium.ttf",
+      "sha1": "f79fcf43fb6d723bf563dc4cef01559739919532"
+    },
+    {
+      "path": "assets/fonts/Newsreader36pt-Regular.ttf",
+      "sha1": "190c41fec26ae587989906af4f94572fb9559fda"
+    },
+    {
+      "path": "assets/fonts/PlayfairDisplay-Bold.ttf",
+      "sha1": "83a180802529fd1f7702f4e6308b87fdbd7b5a96"
     },
     {
       "path": "assets/fonts/PlayfairDisplay-Regular.ttf",

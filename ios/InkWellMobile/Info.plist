@@ -52,11 +52,20 @@
 	<string>InkWell uses speech recognition to transcribe your voice journal entries into text.</string>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Alice-Regular.ttf</string>
 		<string>Lato-Bold.ttf</string>
 		<string>PlayfairDisplay-Bold.ttf</string>
 		<string>Lato-Regular.ttf</string>
 		<string>PlayfairDisplay-Regular.ttf</string>
+		<string>Alice-Regular.ttf</string>
+		<string>Manrope-SemiBold.ttf</string>
+		<string>Manrope-Regular.ttf</string>
+		<string>Manrope-Bold.ttf</string>
+		<string>Newsreader36pt-Regular.ttf</string>
+		<string>Newsreader36pt-Medium.ttf</string>
+		<string>Newsreader14pt-Medium.ttf</string>
+		<string>Newsreader36pt-Italic.ttf</string>
+		<string>Newsreader14pt-Regular.ttf</string>
+		<string>Newsreader14pt-Italic.ttf</string>
 	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>

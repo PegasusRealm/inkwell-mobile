@@ -30,9 +30,12 @@ export const isIPad = (): boolean => {
  * On iPad: returns a comfortable reading width based on screen size
  */
 export const getContentMaxWidth = (screenWidth: number): number | undefined => {
-  // Only constrain on iPad — iPhones should always use full width
-  if (!isIPad()) return undefined;
-  
+  // Constrain on tablets — iPad via Platform.isPad, Android tablets via width
+  // (2026-07-04: Android tablets previously got phone-stretched full width).
+  // Phones always use full width.
+  const isTablet = isIPad() || (Platform.OS === 'android' && screenWidth >= 768);
+  if (!isTablet) return undefined;
+
   if (screenWidth >= 1024) {
     // Large iPad (12.9") or landscape - allow wider content
     return Math.min(700, screenWidth - 80);

@@ -1,8 +1,13 @@
 /**
- * InkWell Typography System
- * Custom fonts: Alice (headers), Playfair Display (body), Lato (buttons)
- * 
- * Font Installation: Run `npx react-native-asset` after adding fonts
+ * InkWell Typography System — v2 design language (2026-07-04)
+ * Newsreader writes (display + the user's words), Manrope runs the UI.
+ * Mirrors web: --title-font / --serif-font = Newsreader, --body-font = Manrope.
+ *
+ * Fonts bundled in /assets/fonts (PostScript-exact filenames so one
+ * fontFamily string works on iOS AND Android). After changing fonts:
+ * `npx react-native-asset`, then a fresh native build.
+ * Old fonts (Alice/Playfair/Lato) remain bundled until the M2 screen sweep
+ * finishes, then move to assets/fonts-extra with the rest.
  */
 
 import { Platform, TextStyle } from 'react-native';
@@ -10,34 +15,18 @@ import { colors } from './colors';
 
 // Font Family Definitions
 export const fontFamily = {
-  // Headers - Alice (elegant serif)
-  header: Platform.select({
-    ios: 'Alice-Regular',
-    android: 'Alice-Regular',
-    default: 'Alice-Regular',
-  }),
-  // Body copy - Playfair Display (readable serif)
-  body: Platform.select({
-    ios: 'PlayfairDisplay-Regular',
-    android: 'PlayfairDisplay-Regular',
-    default: 'PlayfairDisplay-Regular',
-  }),
-  bodyBold: Platform.select({
-    ios: 'PlayfairDisplay-Bold',
-    android: 'PlayfairDisplay-Bold',
-    default: 'PlayfairDisplay-Bold',
-  }),
-  // Buttons & UI - Lato (clean sans-serif)
-  button: Platform.select({
-    ios: 'Lato-Regular',
-    android: 'Lato-Regular',
-    default: 'Lato-Regular',
-  }),
-  buttonBold: Platform.select({
-    ios: 'Lato-Bold',
-    android: 'Lato-Bold',
-    default: 'Lato-Bold',
-  }),
+  // Display serif — big headings, screen titles (optical 36pt)
+  header: 'Newsreader36pt-Medium',
+  headerItalic: 'Newsreader36pt-Italic',
+  // Reading serif — the user's words, entry text, Sophy's lines (optical 14pt)
+  serif: 'Newsreader14pt-Regular',
+  serifMedium: 'Newsreader14pt-Medium',
+  serifItalic: 'Newsreader14pt-Italic',
+  // UI sans — body copy, labels, controls. Manrope runs the UI.
+  body: 'Manrope-Regular',
+  bodyBold: 'Manrope-Bold',
+  button: 'Manrope-SemiBold',
+  buttonBold: 'Manrope-Bold',
   // System fallbacks
   system: Platform.select({
     ios: 'System',
@@ -232,6 +221,32 @@ export const textStyles: Record<string, TextStyle> = {
     color: colors.btnDanger,
   },
   
+  // ============ V2 ADDITIONS (2026-07-04) ============
+  // Eyebrow — caps label over sections (mockup .who / manifest-eyebrow)
+  eyebrow: {
+    fontFamily: fontFamily.bodyBold,
+    fontSize: fontSize.xs,
+    color: colors.brandPrimary,
+    letterSpacing: letterSpacing.widest,
+    textTransform: 'uppercase',
+  },
+
+  // The user's words — writing surfaces, entry text (serif, generous)
+  serifBody: {
+    fontFamily: fontFamily.serif,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    lineHeight: fontSize.md * lineHeight.loose,
+  },
+
+  // Sophy's line — her voice is serif italic (mockup .line)
+  sophyLine: {
+    fontFamily: fontFamily.serifItalic,
+    fontSize: fontSize.md,
+    color: colors.fontMain,
+    fontStyle: 'italic',
+  },
+
   // Success text
   success: {
     fontFamily: fontFamily.button,

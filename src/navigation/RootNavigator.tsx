@@ -1,9 +1,8 @@
 import React from 'react';
 import {createStackNavigator} from '@react-navigation/stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
-import {Text, View, Platform} from 'react-native';
 import {useTheme} from '../theme/ThemeContext';
-import {useUnreadReplies} from '../hooks/useUnreadReplies';
+import {PenIcon, StarIcon, CalendarIcon} from '../components/kit/icons';
 import {isIPad} from '../utils/iPad';
 
 // Import screens
@@ -19,45 +18,14 @@ import type {RootStackParamList, MainTabParamList} from './types';
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-// Tab bar icon component (simple text for now, can upgrade to icons later)
-const TabIcon = ({label, focused}: {label: string; focused: boolean}) => (
-  <Text style={{fontSize: 24, opacity: focused ? 1 : 0.5}}>{label}</Text>
-);
-
-// Tab icon with badge for unread notifications
-const TabIconWithBadge = ({label, focused, badgeCount, badgeColor}: {label: string; focused: boolean; badgeCount: number; badgeColor: string}) => (
-  <View style={{position: 'relative'}}>
-    <Text style={{fontSize: 24, opacity: focused ? 1 : 0.5}}>{label}</Text>
-    {badgeCount > 0 && (
-      <View style={{
-        position: 'absolute',
-        top: -4,
-        right: -10,
-        backgroundColor: badgeColor,
-        borderRadius: 10,
-        minWidth: 18,
-        height: 18,
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 4,
-      }}>
-        <Text style={{
-          color: '#FFFFFF',
-          fontSize: 11,
-          fontWeight: '700',
-        }}>
-          {badgeCount > 9 ? '9+' : badgeCount}
-        </Text>
-      </View>
-    )}
-  </View>
-);
+// v2 tab icons (web SVG paths, 2026-07-04) — replaced the emoji labels.
+// The old TabIconWithBadge (unread coach replies + tierConnect badge) died
+// here too: Connect retired, the hook was already an inert stub.
 
 // Main bottom tab navigator
 function MainTabs() {
   const {colors} = useTheme();
-  const {unreadCount} = useUnreadReplies();
-  
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -82,30 +50,23 @@ function MainTabs() {
         component={JournalScreen}
         options={{
           title: 'Journal',
-          tabBarIcon: ({focused}) => <TabIcon label="📝" focused={focused} />,
+          tabBarIcon: ({color}) => <PenIcon color={color} />,
         }}
       />
       <Tab.Screen
         name="Manifest"
         component={ManifestScreen}
         options={{
-          title: 'Manifest',
-          tabBarIcon: ({focused}) => <TabIcon label="✨" focused={focused} />,
+          title: 'Goals',
+          tabBarIcon: ({color}) => <StarIcon color={color} />,
         }}
       />
       <Tab.Screen
         name="PastEntries"
         component={PastEntriesScreen}
         options={{
-          title: 'Past Entries',
-          tabBarIcon: ({focused}) => (
-            <TabIconWithBadge 
-              label="📅" 
-              focused={focused} 
-              badgeCount={unreadCount}
-              badgeColor={colors.tierConnect}
-            />
-          ),
+          title: 'Entries',
+          tabBarIcon: ({color}) => <CalendarIcon color={color} />,
         }}
       />
     </Tab.Navigator>

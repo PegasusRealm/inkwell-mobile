@@ -242,7 +242,9 @@ class SubscriptionService {
                   isActive: true,
                   willRenew: false,
                   platform: 'stripe',
-                  expiresAt: trialEndDate,
+                  // Build-83 rot fix 2026-07-04: was `expiresAt` (typo, not in
+                  // the SubscriptionStatus interface, nothing consumed it)
+                  expirationDate: trialEndDate,
                 };
               } else {
                 console.log('⏰ Alpha/Beta free trial expired:', trialEndDate.toISOString());

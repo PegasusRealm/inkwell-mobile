@@ -1,12 +1,14 @@
 // Navigation type definitions for type-safe navigation
 
-import type {CompositeScreenProps} from '@react-navigation/native';
+import type {CompositeScreenProps, NavigatorScreenParams} from '@react-navigation/native';
 import type {BottomTabScreenProps} from '@react-navigation/bottom-tabs';
 import type {StackScreenProps} from '@react-navigation/stack';
 
 // Root Stack Navigator params
+// (MainTabs accepts nested tab params so services can deep-navigate to a tab —
+//  Build-83 rot fix 2026-07-04, was `undefined` which broke navigationService)
 export type RootStackParamList = {
-  MainTabs: undefined;
+  MainTabs: NavigatorScreenParams<MainTabParamList> | undefined;
   Settings: undefined;
   Info: undefined;
 };

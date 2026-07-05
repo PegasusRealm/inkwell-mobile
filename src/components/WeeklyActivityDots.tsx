@@ -7,7 +7,7 @@
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, StyleSheet } from 'react-native';
 import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import { useTheme, ThemeColors } from '../theme/ThemeContext';
@@ -85,40 +85,34 @@ const WeeklyActivityDots: React.FC<WeeklyActivityDotsProps> = ({ refreshTrigger 
     fetchWeeklyEntries();
   }, [refreshTrigger]); // Re-fetch when trigger changes
   
+  // v2 restyle (2026-07-04): bare mockup dots — done / today / empty.
+  // No label, no day letters; accessibility labels carry the day names.
   if (loading) {
     return (
       <View style={styles.container}>
-        <Text style={styles.label}>This week:</Text>
         {DAY_LABELS.map((_, index) => (
-          <View key={index} style={styles.dotWrapper}>
-            <Text style={styles.dayLabel}>{DAY_LABELS[index]}</Text>
-            <View style={[styles.dot, styles.dotEmpty]} />
-          </View>
+          <View key={index} style={[styles.dot, styles.dotEmpty]} />
         ))}
       </View>
     );
   }
-  
+
   return (
     <View style={styles.container}>
-      <Text style={styles.label}>This week:</Text>
-      {DAY_LABELS.map((label, index) => {
+      {DAY_LABELS.map((_, index) => {
         const hasFilled = daysWithEntries.has(index);
         const isToday = index === today;
-        
+
         return (
-          <View 
-            key={index} 
-            style={styles.dotWrapper}
+          <View
+            key={index}
             accessibilityLabel={`${DAY_NAMES[index]}: ${hasFilled ? 'Entry recorded' : 'No entry'}`}
-          >
-            <Text style={styles.dayLabel}>{label}</Text>
-            <View style={[
+            style={[
               styles.dot,
               hasFilled ? styles.dotFilled : styles.dotEmpty,
               isToday && styles.dotToday,
-            ]} />
-          </View>
+            ]}
+          />
         );
       })}
     </View>
@@ -128,47 +122,26 @@ const WeeklyActivityDots: React.FC<WeeklyActivityDotsProps> = ({ refreshTrigger 
 const createStyles = (colors: ThemeColors, isDark: boolean) => StyleSheet.create({
   container: {
     flexDirection: 'row',
-    justifyContent: 'center',
     alignItems: 'center',
-    paddingVertical: 8,
-    marginBottom: 12,
-    gap: 12,
-  },
-  label: {
-    fontSize: 11,
-    color: colors.fontSecondary,
-    marginRight: 4,
-  },
-  dotWrapper: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  dayLabel: {
-    fontSize: 9,
-    fontWeight: '500',
-    color: colors.fontSecondary,
+    gap: 6,
   },
   dot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 7,
+    height: 7,
+    borderRadius: 4,
   },
   dotEmpty: {
-    backgroundColor: isDark ? 'rgba(42, 105, 114, 0.2)' : colors.bgMuted,
-    borderWidth: 1.5,
-    borderColor: isDark ? 'rgba(42, 105, 114, 0.4)' : colors.borderLight,
+    backgroundColor: colors.borderLight,
   },
   dotFilled: {
     backgroundColor: colors.brandPrimary,
-    borderWidth: 1.5,
-    borderColor: colors.brandPrimary,
   },
   dotToday: {
-    // Ring effect for today
+    backgroundColor: colors.brandPrimary,
     shadowColor: colors.brandPrimary,
     shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.5,
-    shadowRadius: 3,
+    shadowOpacity: isDark ? 0.9 : 0.5,
+    shadowRadius: 4,
     elevation: 3,
   },
 });

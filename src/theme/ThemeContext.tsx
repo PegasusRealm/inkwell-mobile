@@ -1,7 +1,13 @@
 /**
- * InkWell Theme Context
- * Provides Light/Dark/System theme switching
- * Colors match web app CSS variables
+ * InkWell Theme Context — v2 design language (2026-07-04)
+ * Light (White & Clean) / Dark (Ink & Light) / Reading (warm paper) / System.
+ *
+ * Tokens mirror the web: /web/public/app.html + inkwell-v2.css contracts,
+ * from the Adam-approved mockups in Projects/InkWell/builds/ui-pass-2026-07/.
+ *
+ * LAWS: teal is structure; coral is Sophy's only (warm surfaces inside her
+ * blocks — cool tokens read teal there); Reading is opt-in ONLY, never a
+ * default (zombie-pastel rule); purple is dead (Connect retired).
  */
 
 import React, {createContext, useContext, useState, useEffect, ReactNode} from 'react';
@@ -10,146 +16,162 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const THEME_STORAGE_KEY = 'inkwell_theme_preference';
 
-export type ThemeMode = 'light' | 'dark' | 'system';
+export type ThemeMode = 'light' | 'dark' | 'reading' | 'system';
 
-// Light theme colors (current default)
+// ── LIGHT: White & Clean — true white cards on a cool lift ──
 export const lightColors = {
-  // Brand Colors - Calming Teal Palette
   brandPrimary: '#2A6972',
-  brandSecondary: '#388b97',
+  brandSecondary: '#1E8A99',
   brandAlt: '#4A9BA8',
   brandLight: '#89C9D4',
-  brandOutline: '#4f4f4f',
+  brandOutline: '#43514E',
   brandPrimaryRgba: 'rgba(42, 105, 114, 0.3)',
 
-  // Typography Colors
-  fontMain: '#2D3748',
-  fontSecondary: '#4A5568',
-  fontMuted: '#718096',
+  fontMain: '#101B19',
+  fontSecondary: '#43514E',
+  fontMuted: '#6B7876',
   fontAccent: '#2A6972',
   fontWhite: '#ffffff',
+  fontDark: '#101B19',
 
-  // Backgrounds - Warm Gray Scale
-  bgPrimary: '#F5F5F3',
+  bgPrimary: '#F2F6F6',
   bgCard: '#FFFFFF',
-  bgCardHover: '#FAFAF9',
-  bgMuted: '#F7F6F5',
-  bgOverlay: 'rgba(255, 255, 255, 0.95)',
-  bgSection: '#FAFAF9',
+  bgCardHover: '#FAFBFB',
+  bgMuted: '#F6F8F8',
+  bgOverlay: 'rgba(255, 255, 255, 0.92)',
+  bgSection: '#F6F8F8',
 
-  // Borders
-  borderLight: '#E2E8F0',
-  borderMedium: '#CBD5E0',
-  borderAccent: '#4A9BA8',
+  borderLight: '#E6E9E9',
+  borderMedium: '#D5DBDA',
+  borderAccent: '#2A6972',
 
-  // Mindful Accent Colors
-  accentWisdom: '#D69E2E',
+  accentWisdom: '#B8860B',
   accentGrowth: '#38A169',
-  accentReflection: '#805AD5',
-  accentWarm: '#E53E3E',
+  accentReflection: '#C96F5E', // Sophy's — saturated coral for light ground
+  accentWarm: '#C75050',
 
-  // Subscription Tier Colors
   tierFree: '#2A6972',
   tierFreeLight: '#4A9BA8',
   tierPlus: '#D49489',
   tierPlusLight: '#E6A497',
-  tierConnect: '#805AD5',
-  tierConnectLight: '#9F7AEA',
+  tierConnect: '#4A9BA8',      // Connect retired — teal, never purple
+  tierConnectLight: '#89C9D4',
 
-  // Sophy Colors
-  sophyAccent: '#D49489',
-  sophyLight: '#E6A497',
-  sophyHover: '#C2867D',
+  sophyAccent: '#C96F5E',
+  sophyLight: '#D49489',
+  sophyHover: '#B85F4F',
+  sophyTint: 'rgba(212, 148, 137, 0.10)',
+  sophyBorder: 'rgba(212, 148, 137, 0.25)',
+  sophyFieldBg: '#FFFFFF',
+  sophyFieldBorder: '#D5DBDA',
 
-  // Interactive States (Buttons)
   btnPrimary: '#2A6972',
-  btnPrimaryHover: '#1A4B52',
-  btnSecondary: '#E2E8F0',
-  btnSecondaryHover: '#CBD5E0',
-  btnDanger: '#dc3545',
-  btnDangerHover: '#c82333',
-  btnWarning: '#ff9800',
-  btnWarningHover: '#e68900',
-  btnSuccess: '#28a745',
-  btnSuccessHover: '#218838',
-  btnInfo: '#17a2b8',
-  btnInfoHover: '#138496',
+  btnPrimaryHover: '#1F565E',
+  btnSecondary: '#EDF1F1',
+  btnSecondaryHover: '#E2E8E8',
+  btnDanger: '#C0392B',
+  btnDangerHover: '#A93226',
+  btnWarning: '#E8A33D',
+  btnWarningHover: '#D08F2C',
+  btnSuccess: '#38A169',
+  btnSuccessHover: '#2F8A59',
+  btnInfo: '#2A6972',
+  btnInfoHover: '#1F565E',
 
-  // Information/Helper Backgrounds
-  infoBg: '#eaf6fb',
-  
-  // Status bar
+  infoBg: 'rgba(95, 179, 191, 0.08)',
+
   statusBar: 'dark-content' as 'dark-content' | 'light-content',
 };
 
-// Dark theme colors (matching web app dark CSS)
+// ── DARK: Ink & Light — bone words on raised ink ──
 export const darkColors: typeof lightColors = {
-  // Brand Colors - Lighter teal for dark backgrounds
-  brandPrimary: '#4A9BA8',
-  brandSecondary: '#7BB8C4',
-  brandAlt: '#9FD3E0',
-  brandLight: '#B8E0EA',
-  brandOutline: '#A0AEC0',
-  brandPrimaryRgba: 'rgba(74, 155, 168, 0.3)',
+  brandPrimary: '#5FB3BF',
+  brandSecondary: '#7BC4CE',
+  brandAlt: '#4A9BA8',
+  brandLight: '#89C9D4',
+  brandOutline: '#9BA6A3',
+  brandPrimaryRgba: 'rgba(95, 179, 191, 0.3)',
 
-  // Typography Colors - Light text for dark backgrounds
-  fontMain: '#F7FAFC',
-  fontSecondary: '#E2E8F0',
-  fontMuted: '#A0AEC0',
-  fontAccent: '#4A9BA8',
+  fontMain: '#EDE7DC',
+  fontSecondary: '#C9C4B8',
+  fontMuted: '#9BA6A3',
+  fontAccent: '#5FB3BF',
   fontWhite: '#ffffff',
+  fontDark: '#EDE7DC',
 
-  // Backgrounds - Deep blue-gray palette
-  bgPrimary: '#0D1B2A',
-  bgCard: '#1A202C',
-  bgCardHover: '#2D3748',
-  bgMuted: '#1A202C',
-  bgOverlay: 'rgba(26, 32, 44, 0.95)',
-  bgSection: '#1B263B',
+  bgPrimary: '#111A1C',
+  bgCard: '#172225',
+  bgCardHover: '#1C2A2E',
+  bgMuted: '#0C1213',
+  bgOverlay: 'rgba(17, 26, 28, 0.92)',
+  bgSection: '#0C1213',
 
-  // Borders
-  borderLight: '#2D3748',
-  borderMedium: '#4A5568',
-  borderAccent: '#4A9BA8',
+  borderLight: '#1E2C30',
+  borderMedium: '#2A3A3F',
+  borderAccent: '#5FB3BF',
 
-  // Mindful Accent Colors (slightly brighter for dark mode)
-  accentWisdom: '#ECC94B',
+  accentWisdom: '#D4A72C',
   accentGrowth: '#48BB78',
-  accentReflection: '#9F7AEA',
-  accentWarm: '#FC8181',
+  accentReflection: '#D49489', // Sophy's brand coral on dark
+  accentWarm: '#E07856',
 
-  // Subscription Tier Colors
-  tierFree: '#4A9BA8',
-  tierFreeLight: '#7BB8C4',
-  tierPlus: '#E6A497',
-  tierPlusLight: '#F0B5A7',
-  tierConnect: '#9F7AEA',
-  tierConnectLight: '#B794F4',
+  tierFree: '#5FB3BF',
+  tierFreeLight: '#89C9D4',
+  tierPlus: '#D49489',
+  tierPlusLight: '#E6A497',
+  tierConnect: '#4A9BA8',
+  tierConnectLight: '#89C9D4',
 
-  // Sophy Colors (warmer for dark mode)
-  sophyAccent: '#E6A497',
-  sophyLight: '#F0B5A7',
-  sophyHover: '#D49489',
+  sophyAccent: '#D49489',
+  sophyLight: '#E6A497',
+  sophyHover: '#C2867D',
+  sophyTint: 'rgba(212, 148, 137, 0.14)',
+  sophyBorder: 'rgba(212, 148, 137, 0.25)',
+  // Her fields are WARM ink — cool card tokens read teal inside her block
+  sophyFieldBg: '#1D1917',
+  sophyFieldBorder: 'rgba(212, 148, 137, 0.32)',
 
-  // Interactive States (Buttons)
-  btnPrimary: '#4A9BA8',
-  btnPrimaryHover: '#7BB8C4',
-  btnSecondary: '#2D3748',
-  btnSecondaryHover: '#4A5568',
-  btnDanger: '#e74c3c',
-  btnDangerHover: '#c0392b',
-  btnWarning: '#ffa726',
-  btnWarningHover: '#ff9800',
-  btnSuccess: '#2ecc71',
-  btnSuccessHover: '#27ae60',
-  btnInfo: '#3498db',
-  btnInfoHover: '#2980b9',
+  btnPrimary: '#2A6972',       // deep teal chassis, white text — both themes
+  btnPrimaryHover: '#35818C',
+  btnSecondary: '#1C2A2E',
+  btnSecondaryHover: '#233438',
+  btnDanger: '#C0392B',
+  btnDangerHover: '#D64533',
+  btnWarning: '#E8A33D',
+  btnWarningHover: '#F0B155',
+  btnSuccess: '#38A169',
+  btnSuccessHover: '#48BB78',
+  btnInfo: '#2A6972',
+  btnInfoHover: '#35818C',
 
-  // Information/Helper Backgrounds
-  infoBg: 'rgba(42, 105, 114, 0.15)',
-  
-  // Status bar
+  infoBg: 'rgba(95, 179, 191, 0.10)',
+
   statusBar: 'light-content' as const,
+};
+
+// ── READING: warm paper. LAW: opt-in ONLY, never a default. ──
+export const readingColors: typeof lightColors = {
+  ...lightColors,
+  fontMain: '#2E2A22',
+  fontSecondary: '#574F3E',
+  fontMuted: '#83795F',
+
+  bgPrimary: '#F1EAD8',
+  bgCard: '#FBF6EA',
+  bgCardHover: '#F7F0E0',
+  bgMuted: '#F1E9D6',
+  bgOverlay: 'rgba(251, 246, 234, 0.92)',
+  bgSection: '#F1E9D6',
+
+  borderLight: '#E8DDC5',
+  borderMedium: '#D6C8A8',
+
+  btnSecondary: '#EDE4CE',
+  btnSecondaryHover: '#E5DABD',
+
+  infoBg: 'rgba(42, 105, 114, 0.06)',
+
+  statusBar: 'dark-content' as const,
 };
 
 export type ThemeColors = typeof lightColors;
@@ -177,7 +199,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({children}) => {
     const loadTheme = async () => {
       try {
         const saved = await AsyncStorage.getItem(THEME_STORAGE_KEY);
-        if (saved && (saved === 'light' || saved === 'dark' || saved === 'system')) {
+        if (saved && (saved === 'light' || saved === 'dark' || saved === 'reading' || saved === 'system')) {
           setThemeModeState(saved as ThemeMode);
         }
       } catch (error) {
@@ -199,13 +221,13 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({children}) => {
     }
   };
 
-  // Determine if dark mode is active
-  const isDark = 
-    themeMode === 'dark' || 
+  // Determine the active palette
+  const isDark =
+    themeMode === 'dark' ||
     (themeMode === 'system' && systemColorScheme === 'dark');
 
-  // Get the active color palette
-  const colors = isDark ? darkColors : lightColors;
+  const colors =
+    themeMode === 'reading' ? readingColors : isDark ? darkColors : lightColors;
 
   // Don't render until theme is loaded to prevent flash
   if (!isLoaded) {

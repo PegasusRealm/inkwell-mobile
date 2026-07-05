@@ -17,6 +17,7 @@ import {
   ActivityIndicator,
   Image,
   useWindowDimensions,
+  Linking,
 } from 'react-native';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
@@ -148,8 +149,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       if (isNewUser) {
         setTimeout(() => {
           Alert.alert(
-            '🎉 Welcome to InkWell!',
-            'Your account is ready! Head to Settings to add your name and phone number for SMS gratitude reminders.',
+            'Welcome to InkWell',
+            'Your account is ready. Head to Settings to add your name and phone number for SMS gratitude reminders.',
             [
               { text: 'Maybe Later', style: 'cancel' },
               { text: 'Go to Settings', style: 'default' }
@@ -258,8 +259,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       if (isNewUser) {
         setTimeout(() => {
           Alert.alert(
-            '🎉 Welcome to InkWell!',
-            'Your account is ready! Head to Settings to add your name and phone number for SMS gratitude reminders.',
+            'Welcome to InkWell',
+            'Your account is ready. Head to Settings to add your name and phone number for SMS gratitude reminders.',
             [
               { text: 'Maybe Later', style: 'cancel' },
               { text: 'Go to Settings', style: 'default' }
@@ -343,10 +344,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
 
   // Email/Password Sign Up
   const handleEmailSignUp = async () => {
-    if (!displayName.trim()) {
-      Alert.alert('Name Required', 'Please enter your name.');
-      return;
-    }
+    // Name is optional (web parity) — fall back to the email prefix like OAuth paths
+    const signupName = displayName.trim() || email.split('@')[0] || 'InkWell User';
 
     if (!validateEmail(email)) {
       Alert.alert('Invalid Email', 'Please enter a valid email address.');
@@ -384,7 +383,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
 
       // Update profile with display name
       await userCred.user.updateProfile({
-        displayName: displayName.trim(),
+        displayName: signupName,
       });
       console.log('✅ Display name updated');
 
@@ -394,8 +393,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         await firestore().collection('users').doc(userCred.user.uid).set({
           userId: userCred.user.uid,
           email: email,
-          displayName: displayName.trim(),
-          signupUsername: displayName.trim(),
+          displayName: signupName,
+          signupUsername: signupName,
           avatar: '',
           userRole: 'journaler',
           authProvider: 'email',
@@ -502,9 +501,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           {isSignUp ? 'Create Account' : 'Welcome Back'}
         </Text>
         <Text style={styles.subtitle}>
-          {isSignUp
-            ? 'Start your journaling journey'
-            : 'Continue your journey'}
+          For the <Text style={styles.subtitleEm}>Thinkers</Text> and the{' '}
+          <Text style={styles.subtitleEm}>Forgetters</Text>.
         </Text>
 
         {/* Social Sign In Buttons */}
@@ -539,7 +537,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         {isSignUp && (
           <TextInput
             style={styles.input}
-            placeholder="Full Name"
+            placeholder="What should Sophy call you? (optional)"
             placeholderTextColor={colors.fontMuted}
             value={displayName}
             onChangeText={setDisplayName}
@@ -584,6 +582,16 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         {/* Agreement Checkboxes for Sign Up */}
         {isSignUp && (
           <>
+            {/* The privacy promise, stated plainly (web signup verbatim) */}
+            <Text style={styles.trustLine}>
+              Your words are yours. Never sold, never used to train AI, never visible to another user.{' '}
+              <Text
+                style={styles.link}
+                onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy/')}>
+                How we handle your data
+              </Text>
+            </Text>
+
             {/* Terms & Conditions */}
             <View style={styles.checkboxContainer}>
               <TouchableOpacity
@@ -694,11 +702,32 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     marginBottom: spacing.sm,
   },
   subtitle: {
-    fontFamily: fontFamily.body,
+    fontFamily: fontFamily.serif,
     fontSize: fontSize.md,
     color: colors.fontSecondary,
     textAlign: 'center',
     marginBottom: spacing.xxl,
+  },
+  // Thinkers / Forgetters — user-words wear the teal italic
+  subtitleEm: {
+    fontFamily: fontFamily.serifItalic,
+    fontStyle: 'italic',
+    color: colors.brandLight,
+  },
+  trustLine: {
+    fontFamily: fontFamily.body,
+    fontSize: fontSize.sm,
+    color: colors.fontSecondary,
+    lineHeight: 20,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  checkboxTouchable: {
+    minWidth: 44,
+    minHeight: 44,
+    justifyContent: 'center',
+    alignItems: 'flex-start',
+    paddingTop: 2,
   },
   appleButton: {
     backgroundColor: '#000000',

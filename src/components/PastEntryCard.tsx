@@ -1,3 +1,10 @@
+/**
+ * PastEntryCard — v2 rebuild (M2 Entries slice, 2026-07-04)
+ * The entry card: the person's words in serif, structure in teal,
+ * Sophy's reflection wears coral (her content, her color).
+ * Connect is dead — coach response block, NEW REPLY badge, and
+ * mark-as-read removed (2026-07-04).
+ */
 import React, {useState, useMemo} from 'react';
 import {
   View,
@@ -10,12 +17,14 @@ import {
 } from 'react-native';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
+import {Card, IWButton} from './kit';
 
 interface PastEntryCardProps {
   entry: {
     id: string;
     text: string;
     date: Date;
+    title?: string;
     tags?: string[];
     manifestData?: {
       wish?: string;
@@ -26,38 +35,29 @@ interface PastEntryCardProps {
     promptUsed?: string;
     reflectionUsed?: string;
     reflectionNote?: string;
-    coachResponse?: string | {text: string};
-    newCoachReply?: boolean;
     attachments?: Array<{url: string; name: string}>;
   };
   onEdit?: (entryId: string) => void;
   onDelete?: (entryId: string) => void;
-  onMarkAsRead?: (entryId: string) => void;
 }
 
-const PastEntryCard: React.FC<PastEntryCardProps> = ({
-  entry,
-  onEdit,
-  onDelete,
-  onMarkAsRead,
-}) => {
-  // Theme hook for dynamic theming
-  const {colors, isDark} = useTheme();
-  
-  // Create styles with current theme colors
+const PastEntryCard: React.FC<PastEntryCardProps> = ({entry, onEdit, onDelete}) => {
+  const {colors} = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  
+
   const [manifestExpanded, setManifestExpanded] = useState(false);
   const [promptExpanded, setPromptExpanded] = useState(false);
   const [reflectionExpanded, setReflectionExpanded] = useState(false);
 
   const formatDate = (date: Date) => {
-    return date.toLocaleDateString('en-US', {
-      weekday: 'short',
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-    });
+    return date
+      .toLocaleDateString('en-US', {
+        weekday: 'short',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+      })
+      .toUpperCase();
   };
 
   const handleDelete = () => {
@@ -76,20 +76,9 @@ const PastEntryCard: React.FC<PastEntryCardProps> = ({
   };
 
   return (
-    <View
-      style={[
-        styles.card,
-        entry.newCoachReply && styles.cardWithNewReply,
-      ]}>
-      {/* New Reply Badge */}
-      {entry.newCoachReply && (
-        <View style={styles.newReplyBadge}>
-          <Text style={styles.newReplyBadgeText}>NEW REPLY</Text>
-        </View>
-      )}
-
-      {/* Date Header */}
-      <Text style={styles.dateHeader}>{formatDate(entry.date)}</Text>
+    <Card style={styles.card}>
+      {/* Date line — caps, quiet */}
+      <Text style={styles.dateLine}>{formatDate(entry.date)}</Text>
 
       {/* Tags */}
       {entry.tags && entry.tags.length > 0 && (
@@ -102,146 +91,101 @@ const PastEntryCard: React.FC<PastEntryCardProps> = ({
         </View>
       )}
 
-      {/* Manifest Toggle */}
+      {/* The entry — the person's words own the card */}
+      <Text style={styles.entryText}>{entry.text}</Text>
+
+      {/* Manifest toggle — structure, teal */}
       {entry.manifestData && (
         <View style={styles.toggleSection}>
           <TouchableOpacity
             style={styles.toggleButton}
             onPress={() => setManifestExpanded(!manifestExpanded)}>
             <Text style={styles.toggleButtonText}>
-              {manifestExpanded ? '📜 Hide Manifest' : '📜 Show Manifest'}
+              {manifestExpanded ? 'Hide goal snapshot' : 'Show goal snapshot'}
             </Text>
           </TouchableOpacity>
           {manifestExpanded && (
             <View style={styles.toggleContent}>
               <Text style={styles.toggleContentText}>
-                <Text style={styles.bold}>Want:</Text>{' '}
-                {entry.manifestData.wish || 'Not specified'}
+                <Text style={styles.bold}>Want:</Text> {entry.manifestData.wish || 'Not specified'}
                 {'\n'}
-                <Text style={styles.bold}>Imagine:</Text>{' '}
-                {entry.manifestData.outcome || 'Not specified'}
+                <Text style={styles.bold}>Imagine:</Text> {entry.manifestData.outcome || 'Not specified'}
                 {'\n'}
-                <Text style={styles.bold}>Snags:</Text>{' '}
-                {entry.manifestData.opposition || 'Not specified'}
+                <Text style={styles.bold}>Snags:</Text> {entry.manifestData.opposition || 'Not specified'}
                 {'\n'}
-                <Text style={styles.bold}>How:</Text>{' '}
-                {entry.manifestData.plan || 'Not specified'}
+                <Text style={styles.bold}>How:</Text> {entry.manifestData.plan || 'Not specified'}
               </Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Prompt Toggle */}
+      {/* Prompt toggle — structure, teal */}
       {entry.promptUsed && (
         <View style={styles.toggleSection}>
           <TouchableOpacity
             style={styles.toggleButton}
             onPress={() => setPromptExpanded(!promptExpanded)}>
             <Text style={styles.toggleButtonText}>
-              {promptExpanded ? '📝 Hide Prompt' : '📝 Show Prompt'}
+              {promptExpanded ? 'Hide prompt' : 'Show prompt'}
             </Text>
           </TouchableOpacity>
           {promptExpanded && (
             <View style={styles.toggleContent}>
-              <Text style={styles.toggleContentText}>
-                <Text style={styles.bold}>Prompt:</Text>{' '}
-                <Text style={styles.italic}>{entry.promptUsed}</Text>
-              </Text>
+              <Text style={styles.promptText}>{entry.promptUsed}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Reflection Toggle */}
+      {/* Sophy's reflection toggle — HER content, coral */}
       {entry.reflectionUsed && (
         <View style={styles.toggleSection}>
           <TouchableOpacity
             style={styles.toggleButton}
             onPress={() => setReflectionExpanded(!reflectionExpanded)}>
-            <Text style={styles.toggleButtonText}>
-              {reflectionExpanded
-                ? '💭 Hide Reflection'
-                : '💭 Show Reflection'}
+            <Text style={styles.sophyToggleText}>
+              {reflectionExpanded ? "Hide Sophy's reflection" : "Show Sophy's reflection"}
             </Text>
           </TouchableOpacity>
           {reflectionExpanded && (
-            <View style={styles.toggleContent}>
-              <Text style={styles.toggleContentText}>
-                <Text style={styles.bold}>Sophy's Reflection:</Text>
-                {'\n'}
-                {entry.reflectionUsed}
-              </Text>
+            <View style={styles.sophyContent}>
+              <Text style={styles.sophyWho}>SOPHY</Text>
+              <Text style={styles.sophyText}>{entry.reflectionUsed}</Text>
             </View>
           )}
         </View>
       )}
 
-      {/* Entry Text */}
-      <Text style={styles.entryText}>{entry.text}</Text>
-
-      {/* Reflection Note */}
+      {/* Reflection note (legacy field) */}
       {entry.reflectionNote && (
-        <View style={styles.reflectionNote}>
-          <Text style={styles.reflectionNoteText}>
-            🧠 <Text style={styles.bold}>Reflection:</Text>{' '}
-            {entry.reflectionNote}
-          </Text>
+        <View style={styles.sophyContent}>
+          <Text style={styles.sophyWho}>SOPHY</Text>
+          <Text style={styles.sophyText}>{entry.reflectionNote}</Text>
         </View>
       )}
 
-      {/* Coach Response */}
-      {entry.coachResponse && (
-        <View
-          style={[
-            styles.coachResponse,
-            entry.newCoachReply && styles.coachResponseNew,
-          ]}>
-          <Text style={styles.coachResponseTitle}>
-            {entry.newCoachReply ? '💬 New Coach Reply' : '💬 Coach Reply'}
-          </Text>
-          <Text style={styles.coachResponseText}>
-            {typeof entry.coachResponse === 'string'
-              ? entry.coachResponse
-              : entry.coachResponse.text}
-          </Text>
-          {entry.newCoachReply && onMarkAsRead && (
-            <TouchableOpacity
-              style={styles.markReadButton}
-              onPress={() => onMarkAsRead(entry.id)}>
-              <Text style={styles.markReadButtonText}>✓ Mark as Read</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      )}
-
-      {/* Attachments Preview */}
+      {/* Attachments */}
       {entry.attachments && entry.attachments.length > 0 && (
         <View style={styles.attachmentsSection}>
           <Text style={styles.attachmentsTitle}>
-            📎 {entry.attachments.length} attachment(s)
+            {entry.attachments.length} attachment{entry.attachments.length === 1 ? '' : 's'}
           </Text>
           <View style={styles.attachmentThumbnails}>
             {entry.attachments.slice(0, 4).map((file, index) => {
               const ext = file.url?.split('.').pop()?.toLowerCase();
               const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'].includes(ext || '');
-              
+
               return isImage ? (
-                <TouchableOpacity
-                  key={index}
-                  onPress={() => Linking.openURL(file.url)}>
-                  <Image
-                    source={{uri: file.url}}
-                    style={styles.thumbnail}
-                    resizeMode="cover"
-                  />
+                <TouchableOpacity key={index} onPress={() => Linking.openURL(file.url)}>
+                  <Image source={{uri: file.url}} style={styles.thumbnail} resizeMode="cover" />
                 </TouchableOpacity>
               ) : (
                 <TouchableOpacity
                   key={index}
                   style={styles.filePlaceholder}
                   onPress={() => Linking.openURL(file.url)}>
-                  <Text style={styles.fileIcon}>📄</Text>
+                  <Text style={styles.fileIcon}>FILE</Text>
                   <Text style={styles.fileName} numberOfLines={1}>
                     {file.name}
                   </Text>
@@ -257,273 +201,186 @@ const PastEntryCard: React.FC<PastEntryCardProps> = ({
         </View>
       )}
 
-      {/* Action Buttons */}
+      {/* Actions — quiet */}
       <View style={styles.actions}>
-        {onEdit && (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.editButton]}
-            onPress={() => onEdit(entry.id)}>
-            <Text style={styles.actionButtonText}>✏️ Edit</Text>
-          </TouchableOpacity>
-        )}
-        {onDelete && (
-          <TouchableOpacity
-            style={[styles.actionButton, styles.deleteButton]}
-            onPress={handleDelete}>
-            <Text style={styles.actionButtonText}>🗑️ Delete</Text>
-          </TouchableOpacity>
-        )}
+        {onEdit && <IWButton voice="gray" small title="Edit" onPress={() => onEdit(entry.id)} />}
+        {onDelete && <IWButton voice="gray" small title="Delete" onPress={handleDelete} />}
       </View>
-    </View>
+    </Card>
   );
 };
 
 // Dynamic styles based on theme colors
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  card: {
-    backgroundColor: colors.bgCard,
-    borderRadius: borderRadius.md,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.brandPrimary,
-    shadowColor: '#000',
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-    position: 'relative',
-  },
-  cardWithNewReply: {
-    borderLeftWidth: 5,
-    borderLeftColor: colors.tierConnect,
-    shadowColor: colors.tierConnect,
-    shadowOpacity: 0.2,
-  },
-  newReplyBadge: {
-    position: 'absolute',
-    top: -8,
-    right: spacing.md,
-    backgroundColor: colors.tierConnect,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 12,
-    shadowColor: colors.sophyAccent,
-    shadowOffset: {width: 0, height: 2},
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-    zIndex: 10,
-  },
-  newReplyBadgeText: {
-    color: colors.fontWhite,
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.buttonBold,
-    letterSpacing: 0.5,
-  },
-  dateHeader: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.header,
-    color: colors.brandPrimary,
-    marginBottom: spacing.sm,
-  },
-  toggleSection: {
-    marginBottom: spacing.sm,
-  },
-  toggleButton: {
-    backgroundColor: 'transparent',
-    paddingVertical: 4,
-    marginBottom: 4,
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  toggleButtonText: {
-    color: colors.brandPrimary,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.buttonBold,
-  },
-  toggleContent: {
-    backgroundColor: colors.bgSection,
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.brandPrimary,
-    marginTop: 4,
-  },
-  toggleContentText: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.body,
-    color: colors.fontMain,
-    lineHeight: 20,
-  },
-  bold: {
-    fontFamily: fontFamily.bodyBold,
-  },
-  italic: {
-    fontStyle: 'italic',
-  },
-  entryText: {
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.body,
-    color: colors.fontMain,
-    lineHeight: 24,
-    marginBottom: spacing.md,
-  },
-  reflectionNote: {
-    backgroundColor: colors.bgSection,
-    padding: spacing.sm,
-    borderRadius: borderRadius.sm,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.brandLight,
-    marginBottom: spacing.sm,
-  },
-  reflectionNoteText: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.body,
-    color: colors.fontSecondary,
-    lineHeight: 20,
-  },
-  coachResponse: {
-    backgroundColor: colors.bgSection,
-    padding: spacing.md,
-    borderRadius: borderRadius.md,
-    borderLeftWidth: 4,
-    borderLeftColor: colors.brandSecondary,
-    marginBottom: spacing.sm,
-  },
-  coachResponseNew: {
-    borderLeftWidth: 4,
-    borderLeftColor: colors.tierConnect,
-  },
-  coachResponseTitle: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.header,
-    color: colors.fontMain,
-    marginBottom: spacing.xs,
-  },
-  coachResponseText: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.body,
-    color: colors.fontMain,
-    lineHeight: 20,
-  },
-  markReadButton: {
-    backgroundColor: colors.brandPrimary,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.sm,
-    marginTop: spacing.sm,
-    alignSelf: 'flex-start',
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  markReadButtonText: {
-    color: colors.fontWhite,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.buttonBold,
-  },
-  attachmentsSection: {
-    marginBottom: spacing.sm,
-  },
-  attachmentsTitle: {
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.body,
-    color: colors.fontMuted,
-    fontStyle: 'italic',
-    marginBottom: spacing.xs,
-  },
-  attachmentThumbnails: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginTop: spacing.xs,
-  },
-  thumbnail: {
-    width: 60,
-    height: 60,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.bgMuted,
-  },
-  filePlaceholder: {
-    width: 60,
-    height: 60,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.bgSection,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.borderLight,
-  },
-  fileIcon: {
-    fontSize: fontSize.xxl,
-  },
-  fileName: {
-    fontSize: 8,
-    fontFamily: fontFamily.body,
-    color: colors.fontMuted,
-    marginTop: 2,
-    textAlign: 'center',
-    maxWidth: 58,
-  },
-  moreFilesIndicator: {
-    width: 60,
-    height: 60,
-    borderRadius: borderRadius.sm,
-    backgroundColor: colors.brandPrimaryRgba,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.brandPrimary,
-  },
-  moreFilesText: {
-    fontSize: fontSize.md,
-    fontFamily: fontFamily.buttonBold,
-    color: colors.brandPrimary,
-  },
-  actions: {
-    flexDirection: 'row',
-    marginTop: spacing.md,
-    gap: spacing.sm,
-  },
-  actionButton: {
-    flex: 1,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: borderRadius.md,
-    alignItems: 'center',
-    minHeight: 44,
-    justifyContent: 'center',
-  },
-  editButton: {
-    backgroundColor: colors.brandPrimary,
-  },
-  deleteButton: {
-    backgroundColor: colors.fontMuted,
-  },
-  actionButtonText: {
-    color: colors.fontWhite,
-    fontSize: fontSize.sm,
-    fontFamily: fontFamily.buttonBold,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.xs,
-    marginBottom: spacing.sm,
-  },
-  tag: {
-    backgroundColor: colors.brandPrimaryRgba,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: 4,
-    borderRadius: borderRadius.sm,
-    borderWidth: 1,
-    borderColor: colors.brandPrimary + '33',
-  },
-  tagText: {
-    fontSize: fontSize.xs,
-    fontFamily: fontFamily.buttonBold,
-    color: colors.brandPrimary,
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    card: {
+      marginBottom: spacing.lg,
+    },
+    dateLine: {
+      fontFamily: fontFamily.bodyBold,
+      fontSize: fontSize.xs,
+      color: colors.brandPrimary,
+      letterSpacing: 1.5,
+      marginBottom: spacing.sm,
+    },
+    tagsContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      marginBottom: spacing.sm,
+    },
+    tag: {
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 3,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: colors.borderMedium,
+    },
+    tagText: {
+      fontFamily: fontFamily.button,
+      fontSize: fontSize.xs,
+      color: colors.fontSecondary,
+    },
+    entryText: {
+      fontFamily: fontFamily.serif,
+      fontSize: fontSize.md,
+      color: colors.fontMain,
+      lineHeight: fontSize.md * 1.65,
+      marginBottom: spacing.md,
+    },
+    toggleSection: {
+      marginBottom: spacing.sm,
+    },
+    toggleButton: {
+      paddingVertical: 4,
+      minHeight: 40,
+      justifyContent: 'center',
+    },
+    toggleButtonText: {
+      color: colors.brandPrimary,
+      fontSize: fontSize.sm,
+      fontFamily: fontFamily.buttonBold,
+    },
+    sophyToggleText: {
+      color: colors.sophyAccent,
+      fontSize: fontSize.sm,
+      fontFamily: fontFamily.buttonBold,
+    },
+    toggleContent: {
+      backgroundColor: colors.bgSection,
+      padding: spacing.sm,
+      borderRadius: borderRadius.sm,
+      borderLeftWidth: 3,
+      borderLeftColor: colors.brandPrimary,
+      marginTop: 4,
+    },
+    toggleContentText: {
+      fontSize: fontSize.sm,
+      fontFamily: fontFamily.body,
+      color: colors.fontMain,
+      lineHeight: 20,
+    },
+    promptText: {
+      fontFamily: fontFamily.serifItalic,
+      fontStyle: 'italic',
+      fontSize: fontSize.sm,
+      color: colors.fontMain,
+      lineHeight: 20,
+    },
+    bold: {
+      fontFamily: fontFamily.bodyBold,
+    },
+    // Sophy surfaces — coral only, her words serif italic
+    sophyContent: {
+      backgroundColor: colors.sophyTint,
+      borderWidth: 1,
+      borderColor: colors.sophyBorder,
+      padding: spacing.sm,
+      borderRadius: borderRadius.md,
+      marginTop: 4,
+      marginBottom: spacing.sm,
+    },
+    sophyWho: {
+      fontFamily: fontFamily.bodyBold,
+      fontSize: 10,
+      letterSpacing: 2,
+      color: colors.sophyLight,
+      marginBottom: 2,
+    },
+    sophyText: {
+      fontFamily: fontFamily.serifItalic,
+      fontStyle: 'italic',
+      fontSize: fontSize.sm,
+      color: colors.fontMain,
+      lineHeight: 20,
+    },
+    attachmentsSection: {
+      marginBottom: spacing.sm,
+    },
+    attachmentsTitle: {
+      fontSize: fontSize.xs,
+      fontFamily: fontFamily.body,
+      color: colors.fontMuted,
+      fontStyle: 'italic',
+      marginBottom: spacing.xs,
+    },
+    attachmentThumbnails: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.xs,
+      marginTop: spacing.xs,
+    },
+    thumbnail: {
+      width: 60,
+      height: 60,
+      borderRadius: borderRadius.sm,
+      backgroundColor: colors.bgMuted,
+    },
+    filePlaceholder: {
+      width: 60,
+      height: 60,
+      borderRadius: borderRadius.sm,
+      backgroundColor: colors.bgSection,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+    },
+    fileIcon: {
+      fontFamily: fontFamily.bodyBold,
+      fontSize: fontSize.xs,
+      color: colors.fontMuted,
+      letterSpacing: 1,
+    },
+    fileName: {
+      fontSize: 8,
+      fontFamily: fontFamily.body,
+      color: colors.fontMuted,
+      marginTop: 2,
+      textAlign: 'center',
+      maxWidth: 58,
+    },
+    moreFilesIndicator: {
+      width: 60,
+      height: 60,
+      borderRadius: borderRadius.sm,
+      backgroundColor: colors.bgMuted,
+      justifyContent: 'center',
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: colors.brandPrimary,
+    },
+    moreFilesText: {
+      fontSize: fontSize.md,
+      fontFamily: fontFamily.buttonBold,
+      color: colors.brandPrimary,
+    },
+    actions: {
+      flexDirection: 'row',
+      justifyContent: 'flex-end',
+      gap: spacing.sm,
+      marginTop: spacing.sm,
+    },
+  });
 
 export default PastEntryCard;

@@ -4,6 +4,19 @@
     "appVersionSource": "local"
   },
   "build": {
+    "ios-simulator": {
+      "ios": {
+        "image": "macos-sequoia-15.6-xcode-26.2",
+        "buildConfiguration": "Release",
+        "simulator": true,
+        "scheme": "InkWell"
+      },
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "remote",
+        "autoIncrement": false
+      }
+    },
     "production": {
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2",
