@@ -42,12 +42,10 @@ import {useOnboarding} from '../hooks/useOnboarding';
 import PaywallModal from '../components/PaywallModal';
 import notificationService, {PushNotificationPreferences} from '../services/notificationService';
 import {FirstStepsService} from '../services/firstStepsService';
+import {APP_VERSION} from '../version';
 import {Card, IWButton, Pill, Eyebrow, Divider} from '../components/kit';
 
-// Displayed app version. Native truth: android versionName 26.105.1 /
-// iOS CFBundleShortVersionString (drifted at 26.087.1) — M3 store pass
-// syncs the scheme; update this string with each release until then.
-const APP_VERSION = '26.105.1';
+// App version comes from the single source of truth (src/version.ts — M3 sync)
 
 // Twilio-supported country codes (major regions)
 const COUNTRY_CODES = [

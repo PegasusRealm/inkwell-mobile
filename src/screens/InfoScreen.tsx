@@ -3,10 +3,9 @@ import {View, Text, StyleSheet, ScrollView, useWindowDimensions} from 'react-nat
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import {iPadContentStyle} from '../utils/iPad';
-
-// App version - update this when releasing new builds
-const APP_VERSION = '26.042.1';
-const BUILD_NUMBER = '80';
+// App version comes from the single source of truth (src/version.ts — M3 sync;
+// this file previously carried its own stale copy, 26.042.1)
+import {APP_VERSION, BUILD_NUMBER} from '../version';
 
 export default function InfoScreen() {
   // Theme hook for dynamic theming
