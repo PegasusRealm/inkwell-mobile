@@ -140,6 +140,7 @@ interface FeelCheckRowProps {
 }
 
 const FeelCheckRow: React.FC<FeelCheckRowProps> = ({question, selected, onTap, colors}) => (
+  // Centered stack (Adam, 2026-07-05): question / scale / "optional" on its own line
   <View style={[feelStyles.row, {backgroundColor: colors.bgMuted}]}>
     <Text style={[feelStyles.q, {color: colors.fontSecondary}]}>{question}</Text>
     <View style={feelStyles.scale}>
@@ -171,11 +172,9 @@ const FeelCheckRow: React.FC<FeelCheckRowProps> = ({question, selected, onTap, c
 
 const feelStyles = StyleSheet.create({
   row: {
-    flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'wrap',
     gap: 8,
-    paddingVertical: 8,
+    paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: 10,
     marginBottom: 14,
@@ -183,6 +182,7 @@ const feelStyles = StyleSheet.create({
   q: {
     fontFamily: fontFamily.body,
     fontSize: 13,
+    textAlign: 'center',
   },
   scale: {
     flexDirection: 'row',
@@ -209,7 +209,7 @@ const feelStyles = StyleSheet.create({
     fontFamily: fontFamily.body,
     fontSize: 10.5,
     fontStyle: 'italic',
-    marginLeft: 'auto',
+    textAlign: 'center',
   },
   noted: {
     fontFamily: fontFamily.body,
