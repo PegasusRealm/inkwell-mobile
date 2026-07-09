@@ -137,7 +137,6 @@ export default function SettingsScreen({
   // Account lifecycle
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
-  const [paywallVisible, setPaywallVisible] = useState(false);
   const [crisisExpanded, setCrisisExpanded] = useState(false);
 
   // SMS notifications
@@ -219,7 +218,6 @@ export default function SettingsScreen({
       if (initAndOpenPaywall) {
         await initAndOpenPaywall();
       }
-      setPaywallVisible(true);
     } catch (error) {
       console.error('Error opening paywall:', error);
       Alert.alert('Error', 'Unable to load subscription options. Please try again.');
@@ -1392,10 +1390,7 @@ export default function SettingsScreen({
             <Text style={styles.footerText}>© 2026 All rights reserved</Text>
           </View>
 
-          {/* Paywall Modal - manual trigger */}
-          <PaywallModal visible={paywallVisible} onClose={() => setPaywallVisible(false)} />
-
-          {/* Paywall Modal - feature gating trigger */}
+          {/* Paywall Modal */}
           <PaywallModal visible={showPaywall} onClose={closePaywall} />
 
           {/* Delete Account Modal */}
