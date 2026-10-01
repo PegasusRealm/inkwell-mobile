@@ -14,10 +14,12 @@
 import {Platform} from 'react-native';
 
 // v2 release cut — day 185 of 2026 (2026-07-04), matches web v26.185.1
-export const APP_VERSION = '26.185.1';
+// 26.185.2 (2026-10-01): log-in security/billing hotfix, no feature change. The App Store needs a
+// new version string for a released version, so the hotfix bumps the third segment.
+export const APP_VERSION = '26.185.2';
 
 export const BUILD_NUMBER = Platform.select({
-  ios: '81',
-  android: '84',
+  ios: '82',
+  android: '86',
   default: '0',
 });

@@ -105,7 +105,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       
       // Create user profile (always set to ensure document exists)
       console.log('🔵 Creating/updating Firestore user document...');
-      await userDocRef.set({
+      // SECURITY/BILLING FIX 2026-10-01: returning users get ONLY log-in fields. Writing the
+      // new-user defaults on every log-in reset paid users to free, cleared their Stripe link,
+      // demoted coaches to journaler, renamed people and wiped onboarding progress.
+      if (!isNewUser) {
+        await userDocRef.set({
+          userId: userCredential.user.uid,
+          email: userCredential.user.email,
+          authProvider: 'google',
+          needsProfileCompletion: false,
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+          lastLoginAt: firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } else await userDocRef.set({
         userId: userCredential.user.uid,
         email: userCredential.user.email,
         displayName: userCredential.user.displayName || '',
@@ -216,7 +228,19 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       const isNewUser = !userDoc.exists();
       
       // Set user profile with merge:true - ensures all required fields exist
-      await userDocRef.set({
+      // SECURITY/BILLING FIX 2026-10-01: returning users get ONLY log-in fields. Writing the
+      // new-user defaults on every log-in reset paid users to free, cleared their Stripe link,
+      // demoted coaches to journaler, renamed people and wiped onboarding progress.
+      if (!isNewUser) {
+        await userDocRef.set({
+          userId: userCredential.user.uid,
+          email: userCredential.user.email,
+          authProvider: 'apple',
+          needsProfileCompletion: false,
+          updatedAt: firestore.FieldValue.serverTimestamp(),
+          lastLoginAt: firestore.FieldValue.serverTimestamp(),
+        }, { merge: true });
+      } else await userDocRef.set({
         userId: userCredential.user.uid,
         email: userCredential.user.email,
         displayName: displayName,
@@ -399,7 +423,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           userRole: 'journaler',
           authProvider: 'email',
           agreementAccepted: true,
-          special_code: 'beta',
+          // special_code 'beta' removed 2026-10-01: beta ended Feb 2026 and the code grants 50% off Plus forever.
           subscriptionTier: 'free',
           subscriptionStatus: 'active',
           stripeCustomerId: null,
