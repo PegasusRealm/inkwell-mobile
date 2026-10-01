@@ -35,7 +35,7 @@ try {
 } catch (e) {
   console.warn('Voice module not available:', e);
 }
-import DocumentPicker from 'react-native-document-picker';
+import { pick, types, isErrorWithCode, errorCodes } from '@react-native-documents/picker';
 import {launchImageLibrary, ImagePickerResponse} from 'react-native-image-picker';
 import storage from '@react-native-firebase/storage';
 import firestore from '@react-native-firebase/firestore';
@@ -715,9 +715,9 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
 
   const handlePickDocuments = async () => {
     try {
-      const results = await DocumentPicker.pick({
+      const results = await pick({
         allowMultiSelection: true,
-        type: [DocumentPicker.types.images, DocumentPicker.types.pdf, DocumentPicker.types.allFiles],
+        type: [types.images, types.pdf, types.allFiles],
       });
 
       const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -739,7 +739,7 @@ const JournalScreen: React.FC<TabScreenProps<'Journal'>> = ({navigation}) => {
         })),
       ]);
     } catch (error: any) {
-      if (!DocumentPicker.isCancel(error)) {
+      if (!isErrorWithCode(error, errorCodes.OPERATION_CANCELED)) {
         console.error('File picker error:', error);
         Alert.alert('Error', 'Failed to pick files.');
       }

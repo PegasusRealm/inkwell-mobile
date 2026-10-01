@@ -334,7 +334,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       } else if (error.code === 'auth/invalid-email') {
         message = 'Invalid email address.';
       } else if (error.code === 'auth/invalid-credential') {
-        message = 'Invalid email or password.';
+        message = 'Invalid email or password. If you signed up with Google or Apple, use the Continue with Google/Apple button instead.';
       }
       Alert.alert('Login Failed', message);
     } finally {
