@@ -51,12 +51,24 @@ class SubscriptionService {
   // The InkWell account RevenueCat is signed in as. v2.0: before, a second account on the
   // same phone kept the first account's RevenueCat identity (purchases landed on the wrong user).
   private userId: string | null = null;
+  // initialize and logout run one after another, never interleaved (a quick sign-out then
+  // sign-in must not leave RevenueCat anonymous, and two screens must not configure twice).
+  private queue: Promise<unknown> = Promise.resolve();
+  private serial<T>(fn: () => Promise<T>): Promise<T> {
+    const run = this.queue.then(fn, fn);
+    this.queue = run.catch(() => undefined);
+    return run;
+  }
 
   /**
    * Initialize RevenueCat for this signed-in user.
    * Configures the SDK once per app run, then logs in (or switches) to this user.
    */
-  async initialize(userId: string): Promise<void> {
+  initialize(userId: string): Promise<void> {
+    return this.serial(() => this.initializeNow(userId));
+  }
+
+  private async initializeNow(userId: string): Promise<void> {
     if (this.configured && this.userId === userId) {
       return;
     }
@@ -448,7 +460,11 @@ class SubscriptionService {
   /**
    * Logout user from RevenueCat
    */
-  async logout(): Promise<void> {
+  logout(): Promise<void> {
+    return this.serial(() => this.logoutNow());
+  }
+
+  private async logoutNow(): Promise<void> {
     try {
       if (this.userId) await Purchases.logOut();
       this.userId = null;

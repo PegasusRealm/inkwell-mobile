@@ -30,6 +30,8 @@ export type KeptParams = {
   hadFeelBefore: boolean;
   /** The very first entry this person keeps (FirstSteps). */
   firstSave?: boolean;
+  /** Another way in Write still holds words (its label); Done goes back to it. */
+  stillOpen?: string;
 };
 
 // Root stack (MainTabs accepts nested tab params so services can deep-navigate)

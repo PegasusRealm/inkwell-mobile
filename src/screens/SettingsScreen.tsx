@@ -1337,11 +1337,11 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
                 Nothing you write is sold, shared with advertisers, or used to train AI models.
               </Text>
               <Text style={styles.privacyLine}>
-                Sophy reads an entry only when you ask her to, or when you turn on her insights in You. Her AI
+                Sophy reads an entry only when you ask her to, or when you turn on her insights above. Her AI
                 providers process it to respond and do not keep it to train on.
               </Text>
               <Text style={styles.privacyLine}>
-                We keep a few dates, like when you last opened the app, so we can tell what helps. We never measure your words.
+                We keep a few dates, like when you last opened the app, and crash reports so we can fix what breaks. We never measure your words.
               </Text>
               <Text style={styles.privacyLine}>
                 Delete your account and your words are permanently gone within 30 days.

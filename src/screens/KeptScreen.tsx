@@ -25,7 +25,7 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const {entryId, text, mode, words, minutes, hadFeelBefore, firstSave} = route.params;
+  const {entryId, text, mode, words, minutes, hadFeelBefore, firstSave, stillOpen} = route.params;
   const {hasFeatureAccess, checkFeatureAndShowPaywall, showPaywall, closePaywall} = useSubscription();
 
   const [feelAfter, setFeelAfter] = useState(0);
@@ -100,7 +100,8 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
   const done = async () => {
     if (closing.current) return;
     closing.current = true;
-    navigation.navigate('MainTabs', {screen: 'Today'});
+    if (stillOpen) navigation.goBack(); // back to the words still open in Write
+    else navigation.navigate('MainTabs', {screen: 'Today'});
   };
 
   const summary =
@@ -119,6 +120,7 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
             </View>
             <Text style={styles.keptText}>{summary}</Text>
           </View>
+          {stillOpen ? <Text style={styles.first}>{`Your words in ${stillOpen} are still open.`}</Text> : null}
           {firstSave ? <Text style={styles.first}>Your first entry is kept. It's private, and it's here whenever you want it.</Text> : null}
 
           <FeelCheck question="How heavy is it now?" selected={feelAfter} onTap={onFeel} colors={colors} />
@@ -146,7 +148,7 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
           )}
 
           {note ? <Text style={styles.note}>{note}</Text> : null}
-          <IWButton title="Done" onPress={done} style={styles.doneBtn} />
+          <IWButton title={stillOpen ? `Back to ${stillOpen}` : 'Done'} onPress={done} style={styles.doneBtn} />
         </ScrollView>
       </View>
       <PaywallModal visible={showPaywall} onClose={closePaywall} />

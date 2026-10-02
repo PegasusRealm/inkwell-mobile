@@ -199,7 +199,7 @@ const feelStyles = StyleSheet.create({
   dot: {width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center'},
   dotText: {fontFamily: fontFamily.buttonBold, fontSize: 15},
   end: {fontFamily: fontFamily.body, fontSize: 13},
-  hint: {fontFamily: fontFamily.body, fontSize: 13},
+  hint: {fontFamily: fontFamily.body, fontSize: 15},
 });
 
 const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route}) => {
@@ -654,13 +654,68 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
 
   const minutesSinceOpen = () => Math.max(1, Math.round((Date.now() - openedAt) / 60000));
 
-  /** After any save: Kept takes over from Write (it pops up over Today). */
-  const goKept = (entryId: string, text: string, m: WriteMode, words: number) => {
+  // Every text field in Write, which way it belongs to, and how to clear it. Used so that
+  // keeping one way never silently drops words typed in another (Bruce, 2026-10-01).
+  type FieldKey =
+    | 'journalEntry' | 'sprintText' | 'inkblotText'
+    | 'reframe1' | 'reframe2' | 'reframe3' | 'reframe4'
+    | 'gratitude1' | 'gratitude2' | 'gratitude3'
+    | 'gratDeepText' | 'gratSubtractionText' | 'gratLetterText' | 'gratSavorText';
+  const fieldValues: Record<FieldKey, string> = {
+    journalEntry, sprintText, inkblotText, reframe1, reframe2, reframe3, reframe4,
+    gratitude1, gratitude2, gratitude3, gratDeepText, gratSubtractionText, gratLetterText, gratSavorText,
+  };
+  const FIELD_HOME: Record<FieldKey, {mode: WriteMode; grat?: GratPractice}> = {
+    journalEntry: {mode: 'free'},
+    sprintText: {mode: 'sprint'},
+    inkblotText: {mode: 'inkblot'},
+    reframe1: {mode: 'reframe'},
+    reframe2: {mode: 'reframe'},
+    reframe3: {mode: 'reframe'},
+    reframe4: {mode: 'reframe'},
+    gratitude1: {mode: 'gratitude', grat: 'three'},
+    gratitude2: {mode: 'gratitude', grat: 'three'},
+    gratitude3: {mode: 'gratitude', grat: 'three'},
+    gratDeepText: {mode: 'gratitude', grat: 'deep'},
+    gratSubtractionText: {mode: 'gratitude', grat: 'subtraction'},
+    gratLetterText: {mode: 'gratitude', grat: 'letter'},
+    gratSavorText: {mode: 'gratitude', grat: 'savor'},
+  };
+  const clearField: Record<FieldKey, () => void> = {
+    journalEntry: () => {
+      setJournalEntry('');
+      setEntryTags([]);
+      setAttachments([]);
+      setPrompt('');
+      setVoiceReflection('');
+      setKeepVoiceNote(false);
+      setEmotionalInsights(null);
+    },
+    sprintText: () => setSprintText(''),
+    inkblotText: () => setInkblotText(''),
+    reframe1: () => setReframe1(''),
+    reframe2: () => setReframe2(''),
+    reframe3: () => setReframe3(''),
+    reframe4: () => setReframe4(''),
+    gratitude1: () => setGratitude1(''),
+    gratitude2: () => setGratitude2(''),
+    gratitude3: () => setGratitude3(''),
+    gratDeepText: () => setGratDeepText(''),
+    gratSubtractionText: () => setGratSubtractionText(''),
+    gratLetterText: () => setGratLetterText(''),
+    gratSavorText: () => setGratSavorText(''),
+  };
+
+  /**
+   * After any save: Kept takes over from Write (it pops up over Today).
+   * If another way still holds words, Write stays underneath on that way, and Kept's
+   * Done brings them back to it instead of to Today.
+   */
+  const goKept = (entryId: string, text: string, m: WriteMode, words: number, saved: FieldKey[]) => {
     markFirstEntry();
     const firstSave = FirstStepsService.isQuestActive() && !FirstStepsService.getState()?.save;
     FirstStepsService.complete('save');
-    leavingRef.current = true;
-    navigation.replace('Kept', {
+    const kept = {
       entryId,
       text,
       mode: m,
@@ -668,7 +723,20 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       minutes: m === 'sprint' ? sprintMinutes : minutesSinceOpen(),
       hadFeelBefore: feelBefore > 0,
       firstSave,
-    });
+    };
+    const remaining = (Object.keys(fieldValues) as FieldKey[]).filter(
+      k => !saved.includes(k) && fieldValues[k].trim().length > 0,
+    );
+    if (remaining.length === 0) {
+      leavingRef.current = true;
+      navigation.replace('Kept', kept);
+      return;
+    }
+    saved.forEach(k => clearField[k]());
+    const home = FIELD_HOME[remaining[0]];
+    setMode(home.mode);
+    if (home.grat) setActiveGratPractice(home.grat);
+    navigation.navigate('Kept', {...kept, stillOpen: MODE_LABEL[home.mode]});
   };
 
   const ts = () => firestore.FieldValue.serverTimestamp();
@@ -736,7 +804,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
         }
       })();
 
-      goKept(savedEntry.id, journalEntry, 'free', countWords(journalEntry));
+      goKept(savedEntry.id, journalEntry, 'free', countWords(journalEntry), ['journalEntry']);
     } catch (error: any) {
       console.error('Error saving entry:', error);
       flashStatus(setJournalStatus, "Couldn't keep this. Your words are still here. Try again.", 5000);
@@ -758,7 +826,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       if (!user) return;
       const entryData = reframePayload({uid: user.uid, ts: ts(), now: new Date(), steps, extras: extrasFor('reframe')});
       const docRef = await firestore().collection('journalEntries').add(entryData);
-      goKept(docRef.id, entryData.text, 'reframe', countWords(steps.join(' ')));
+      goKept(docRef.id, entryData.text, 'reframe', countWords(steps.join(' ')), ['reframe1', 'reframe2', 'reframe3', 'reframe4']);
     } catch (e) {
       console.error('Reframe save failed:', e);
       flashStatus(setReframeStatus, "Couldn't keep this. Your words are still here. Try again.", 5000);
@@ -781,7 +849,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       const entryData = gratitudeThreePayload({uid: user.uid, ts: ts(), now: new Date(), gratitudes, extras: extrasFor('gratitude')});
       const docRef = await firestore().collection('journalEntries').add(entryData);
       await markGratDoneToday();
-      goKept(docRef.id, entryData.text, 'gratitude', countWords(gratitudes.join(' ')));
+      goKept(docRef.id, entryData.text, 'gratitude', countWords(gratitudes.join(' ')), ['gratitude1', 'gratitude2', 'gratitude3']);
     } catch (error: any) {
       console.error('Error saving gratitude:', error);
       flashStatus(setGratitudeStatus, "Couldn't keep this. Try again.");
@@ -819,7 +887,13 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       });
       const docRef = await firestore().collection('journalEntries').add(entryData);
       await markGratDoneToday();
-      goKept(docRef.id, entryData.text, 'gratitude', countWords(text));
+      const practiceField: Record<typeof m, FieldKey> = {
+        deep: 'gratDeepText',
+        subtraction: 'gratSubtractionText',
+        letter: 'gratLetterText',
+        savor: 'gratSavorText',
+      };
+      goKept(docRef.id, entryData.text, 'gratitude', countWords(text), [practiceField[m]]);
     } catch (e) {
       console.error('Gratitude practice save failed:', e);
       flashStatus(setGratitudeStatus, "Couldn't keep this. Try again.");
@@ -1008,7 +1082,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       const entryData = sprintPayload({uid: user.uid, ts: ts(), now: new Date(), text, minutes: sprintMinutes, extras: extrasFor('sprint')});
       const docRef = await firestore().collection('journalEntries').add(entryData);
       stopSprintTimer(true);
-      goKept(docRef.id, entryData.text, 'sprint', countWords(text));
+      goKept(docRef.id, entryData.text, 'sprint', countWords(text), ['sprintText']);
     } catch (e) {
       console.error('Sprint save failed:', e);
       flashStatus(setSprintStatus, "Couldn't keep this. Your writing is still here. Try again.", 5000);
@@ -1036,7 +1110,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
         extras: extrasFor('inkblot', inkblotVoiceRef.current),
       });
       const docRef = await firestore().collection('journalEntries').add(entryData);
-      goKept(docRef.id, entryData.text, 'inkblot', countWords(inkblotText));
+      goKept(docRef.id, entryData.text, 'inkblot', countWords(inkblotText), ['inkblotText']);
     } catch (error: any) {
       console.error('Error saving InkBlot:', error);
       flashStatus(setInkblotStatus, "Couldn't keep this. Try again.");
@@ -1100,6 +1174,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       gratSubtractionText,
       gratLetterText,
       gratSavorText,
+      voicePartialText, // words still being dictated count too
     ].some(s => s.trim().length > 0);
 
   // Every way out (Close, Android Back, a notification tap) asks first when there are
@@ -1124,8 +1199,9 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
     return unsubscribe;
   }, [navigation]);
 
+  // Listening stops when they actually leave (the unmount cleanup destroys Voice), not
+  // before the guard asks, so "Keep writing" never loses words mid-dictation.
   const handleClose = () => {
-    if (isRecording || inkblotRecording) Voice?.stop?.();
     navigation.goBack();
   };
 
