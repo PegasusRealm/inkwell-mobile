@@ -60,6 +60,8 @@ const WeeklyActivityDots: React.FC<WeeklyActivityDotsProps> = ({ refreshTrigger 
         const days = new Set<number>();
         snapshot.forEach(doc => {
           const data = doc.data();
+          // A saved goal isn't a day of writing
+          if (data.entryMode === 'goal') return;
           // Handle both Timestamp objects and ISO strings for backwards compatibility
           let entryDate: Date;
           if (data.createdAt?.toDate) {

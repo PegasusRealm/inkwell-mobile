@@ -3,7 +3,10 @@
  *
  * Options pass (Adam, 2026-10-01): one name ("your goal"), one start, one Sophy check.
  * With a goal:   Your goal (Want, runway, How, Edit)
- *                -> quiet "Done with this one? Start a new goal." (clears it, after a confirm).
+ *                -> quiet "Done with this one? Start a new goal." It asks "Did you reach it?"
+ *                   (I did it / Moving on); either way the goal is saved to Entries, never deleted.
+ * Goals reached:  a quiet count under the title, shown only once there is at least one (Adam:
+ *                 "0 does not feel nice"). Kept in users/{uid}.goalsReached.
  * Without one:   Start a goal: "Do you know what you want?"
  *                  Yes      -> the four steps (Want / Imagine / Snags / How)
  *                  Not sure -> the values planner, which hands its pick to the Want.
@@ -40,6 +43,8 @@ import ValuesPlanner from '../components/ValuesPlanner';
 import {IdentityBar, ScreenTitle} from '../components/IdentityBar';
 import {Card, IWButton, Pill, Eyebrow, Divider} from '../components/kit';
 import {CoachHint} from '../components/FirstStepsCard';
+import {LeafIcon} from '../components/kit/icons';
+import {goalArchivePayload, GoalOutcome, tzOffsetMinutes} from '../services/entryPayloads';
 import InfoModal, {InfoParagraph, InfoHighlightBox, InfoSection} from '../components/InfoModal';
 import {FirstStepsService} from '../services/firstStepsService';
 import type {TabScreenProps} from '../navigation/types';
@@ -136,6 +141,24 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
 
   // Start a goal: null = the question; 'know' = the four steps
   const [startPath, setStartPath] = useState<'know' | null>(null);
+
+  // Goals reached (shown only from 1 up) and the line after closing one
+  const [goalsReached, setGoalsReached] = useState(0);
+  const [closeNote, setCloseNote] = useState('');
+  const [closing, setClosing] = useState(false);
+  // The archive entry for the goal on screen is already saved (a failed clear can be retried
+  // without saving it, or counting it, twice)
+  const archivedRef = useRef(false);
+  useEffect(() => {
+    const user = auth().currentUser;
+    if (!user) return;
+    firestore()
+      .collection('users')
+      .doc(user.uid)
+      .get()
+      .then(snap => setGoalsReached(Number(snap.data()?.goalsReached) || 0))
+      .catch(e => console.warn('goalsReached load failed:', e));
+  }, []);
 
   // Planner state
   const [plannerOpen, setPlannerOpen] = useState(false);
@@ -400,6 +423,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
 
       // Back to the calm summary
       setSavedWish({want, imagine, snags, how});
+      archivedRef.current = false; // an edited goal gets its own saved copy when it closes
       setPlanCheck('');
       setEditing(false);
       setStartPath(null);
@@ -415,45 +439,81 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     }
   };
 
-  const handleClearWish = () => {
-    Alert.alert(
-      'Start a new goal?',
-      "This clears your current goal and resets its day count. It can't be undone.",
-      [
-        {text: 'Keep it', style: 'cancel'},
-        {
-          text: 'Clear it',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              const currentUser = auth().currentUser;
-              if (currentUser) {
-                const userId = currentUser.uid;
-                await AsyncStorage.removeItem(`manifest_${userId}`);
-                await AsyncStorage.removeItem(`wishStart_${userId}`);
-                // Web parity: clear the timeline too, or the old choice re-hydrates
-                await AsyncStorage.removeItem(`wishTimeline_${userId}`);
-                await firestore().collection('manifests').doc(userId).delete();
-              }
+  // Close the goal: saved to Entries first (never deleted), then cleared. If the save fails,
+  // nothing is cleared.
+  const closeGoal = async (outcome: GoalOutcome) => {
+    const currentUser = auth().currentUser;
+    if (!currentUser || !savedWish) return;
+    const userId = currentUser.uid;
+    setClosing(true);
+    if (!archivedRef.current) {
+      try {
+        const entry = goalArchivePayload({
+          uid: userId,
+          ts: firestore.FieldValue.serverTimestamp(),
+          now: new Date(),
+          outcome,
+          goal: savedWish,
+          startDate: wishStartDate,
+          timelineDays: wishTimeline,
+          dayReached: wishStartDate ? dayNumber : undefined,
+          extras: {tzOffsetMin: tzOffsetMinutes()},
+        });
+        await firestore().collection('journalEntries').add(entry);
+      } catch (error) {
+        console.error('Goal save failed:', error);
+        setClosing(false);
+        Alert.alert("Couldn't save it", 'Nothing was cleared. Check your connection and try again.');
+        return;
+      }
+      try {
+        if (outcome === 'reached') {
+          await firestore()
+            .collection('users')
+            .doc(userId)
+            .set({goalsReached: firestore.FieldValue.increment(1)}, {merge: true});
+          setGoalsReached(n => n + 1);
+        }
+      } catch (e) {
+        console.warn('goalsReached update failed:', e);
+      }
+      archivedRef.current = true;
+    }
+    try {
+      // Cloud copy first: if it can't be removed, the goal stays on screen (already saved in Entries)
+      await firestore().collection('manifests').doc(userId).delete();
+      await AsyncStorage.removeItem(`manifest_${userId}`);
+      await AsyncStorage.removeItem(`wishStart_${userId}`);
+      // Web parity: clear the timeline too, or the old choice re-hydrates
+      await AsyncStorage.removeItem(`wishTimeline_${userId}`);
+    } catch (error) {
+      console.error('Error clearing goal:', error);
+      setClosing(false);
+      Alert.alert('Saved, not cleared', "Your goal is saved in Entries, but it couldn't be cleared here. Try again in a moment.");
+      return;
+    }
+    archivedRef.current = false;
+    setWishTexts(EMPTY_WISH);
+    setSavedWish(null);
+    setPlanCheck('');
+    setEditing(false);
+    setStartPath(null);
+    setSaveStatus('');
+    setWishStartDate(null);
+    setWishTimeline(60);
+    setDayNumber(1);
+    setClosing(false);
+    setCloseNote(outcome === 'reached' ? "You did it. It's saved in Entries." : "It's saved in Entries. Start the next one when you're ready.");
+    scrollToTop();
+  };
 
-              setWishTexts(EMPTY_WISH);
-              setSavedWish(null);
-              setPlanCheck('');
-              setEditing(false);
-              setStartPath(null);
-              setSaveStatus('');
-              setWishStartDate(null);
-              setWishTimeline(60);
-              setDayNumber(1);
-              scrollToTop();
-            } catch (error) {
-              console.error('Error clearing WISH:', error);
-              Alert.alert('Not cleared', 'Your goal could not be cleared. Please try again.');
-            }
-          },
-        },
-      ],
-    );
+  const handleClearWish = () => {
+    if (closing) return;
+    Alert.alert('Did you reach it?', 'Either way, it goes to Entries and you start fresh.', [
+      {text: 'Keep going', style: 'cancel'},
+      {text: 'Moving on', onPress: () => closeGoal('set_aside')},
+      {text: 'I did it', onPress: () => closeGoal('reached')},
+    ]);
   };
 
   // ─── Pieces ───
@@ -516,6 +576,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
   // LAW: FREE-tier flows only on this tab, never a paywall gate.
   const renderStartCard = () => (
     <Card style={styles.sectionCard}>
+      {closeNote ? <Text style={styles.closeNote}>{closeNote}</Text> : null}
       <Eyebrow style={styles.eyebrow}>Start a goal</Eyebrow>
       <Text style={styles.startQuestion} accessibilityRole="header">
         Do you know what you want?
@@ -607,10 +668,10 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     <Pressable
       onPress={handleClearWish}
       accessibilityRole="button"
-      accessibilityLabel="Done with this one? Start a new goal. This clears your goal and its day count."
+      accessibilityLabel="Done with this one? Start a new goal. It goes to Entries, then you start fresh."
       style={({pressed}) => [styles.quietRow, pressed && styles.pressed]}>
-      <Text style={styles.quietRowTitle}>Done with this one? Start a new goal.</Text>
-      <Text style={styles.quietRowLine}>This clears your goal and its day count.</Text>
+      <Text style={styles.quietRowTitle}>{closing ? 'Saving...' : 'Done with this one? Start a new goal.'}</Text>
+      <Text style={styles.quietRowLine}>It goes to Entries, then you start fresh.</Text>
     </Pressable>
   );
 
@@ -641,7 +702,13 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent}>
         <View style={[styles.content, iPadContentStyle(screenWidth)]}>
-          <ScreenTitle>Goals</ScreenTitle>
+          <ScreenTitle containerStyle={goalsReached > 0 ? styles.titleTight : undefined}>Goals</ScreenTitle>
+          {goalsReached > 0 ? (
+            <View style={styles.reachedRow} accessible accessibilityLabel={`${goalsReached} ${goalsReached === 1 ? 'goal' : 'goals'} reached`}>
+              <LeafIcon color={colors.brandPrimary} size={15} />
+              <Text style={styles.reachedText}>{`${goalsReached} ${goalsReached === 1 ? 'goal' : 'goals'} reached`}</Text>
+            </View>
+          ) : null}
           {renderBody()}
         </View>
       </ScrollView>
@@ -765,6 +832,17 @@ const createStyles = (colors: ThemeColors) =>
       lineHeight: 22,
       color: colors.fontMuted,
       marginTop: spacing.md,
+    },
+    titleTight: {marginBottom: -spacing.sm},
+    reachedRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.lg},
+    reachedText: {fontFamily: fontFamily.body, fontSize: fontSize.base, color: colors.fontSecondary},
+    closeNote: {
+      fontFamily: fontFamily.serifItalic,
+      fontStyle: 'italic',
+      fontSize: fontSize.md,
+      lineHeight: 24,
+      color: colors.fontMain,
+      marginBottom: spacing.md,
     },
     startQuestion: {
       fontFamily: fontFamily.header,

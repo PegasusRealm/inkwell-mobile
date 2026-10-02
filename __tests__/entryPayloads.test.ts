@@ -14,6 +14,7 @@ import {
   sprintPayload,
   inkblotPayload,
   markTimedWrite,
+  goalArchivePayload,
   wordCount,
 } from '../src/services/entryPayloads';
 
@@ -198,5 +199,33 @@ describe('2.0 options pass: timed write', () => {
   test('no tags yet: the sprint tag is the only one, never doubled', () => {
     const base = freeWritePayload({uid: UID, ts: TS, now: NOW, text: 'x', tags: [], manifest: null});
     expect(markTimedWrite(markTimedWrite(base, 15), 15).tags).toEqual(['sprint']);
+  });
+});
+
+describe('2.0: goals are saved, never deleted', () => {
+  const goal = {want: 'Asleep by 11', imagine: 'Mornings are mine', snags: 'Scrolling', how: 'If 10:30, phone in the kitchen'};
+  test('a reached goal becomes an entry', () => {
+    expect(
+      goalArchivePayload({uid: UID, ts: TS, now: NOW, outcome: 'reached', goal, startDate: '2026-09-01T00:00:00.000Z', timelineDays: 30, dayReached: 31}),
+    ).toEqual({
+      userId: UID,
+      text: 'Goal reached: Asleep by 11\n\nImagine: Mornings are mine\nSnags: Scrolling\nHow: If 10:30, phone in the kitchen\n\nReached on day 31.',
+      title: `Goal reached - ${today}`,
+      tags: ['goal', 'goal-reached'],
+      entryMode: 'goal',
+      goalOutcome: 'reached',
+      goal,
+      goalStartDate: '2026-09-01T00:00:00.000Z',
+      goalTimelineDays: 30,
+      createdAt: TS,
+      updatedAt: TS,
+    });
+  });
+  test('a set-aside goal with only a Want', () => {
+    const out = goalArchivePayload({uid: UID, ts: TS, now: NOW, outcome: 'set_aside', goal: {want: 'Run', imagine: '', snags: '', how: ''}});
+    expect(out.text).toBe('Goal set aside: Run');
+    const one = goalArchivePayload({uid: UID, ts: TS, now: NOW, outcome: 'set_aside', goal: {want: 'Run', imagine: '', snags: '', how: ''}, dayReached: 1});
+    expect(one.text).toBe('Goal set aside: Run\n\nWorked on it for 1 day.');
+    expect(out.tags).toEqual(['goal', 'goal-set-aside']);
   });
 });

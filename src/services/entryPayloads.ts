@@ -195,6 +195,44 @@ export function markTimedWrite(entry: any, minutes: 15 | 20) {
   return entry;
 }
 
+// ─── A finished or set-aside goal (2.0, 2026-10-01: goals are saved, never deleted) ───
+export type GoalOutcome = 'reached' | 'set_aside';
+export function goalArchivePayload(
+  p: Base & {
+    outcome: GoalOutcome;
+    goal: {want: string; imagine: string; snags: string; how: string};
+    startDate?: string | null;
+    timelineDays?: number;
+    dayReached?: number;
+  },
+) {
+  const g = p.goal;
+  const head = p.outcome === 'reached' ? 'Goal reached' : 'Goal set aside';
+  // The Want is already in the heading, so the steps list starts at Imagine
+  const lines = [
+    g.imagine.trim() ? `Imagine: ${g.imagine.trim()}` : '',
+    g.snags.trim() ? `Snags: ${g.snags.trim()}` : '',
+    g.how.trim() ? `How: ${g.how.trim()}` : '',
+  ].filter(Boolean);
+  // Never "Day 12 of 60": that reads like a grade (Phil)
+  const n = p.dayReached || 0;
+  const days = !n ? '' : p.outcome === 'reached' ? `Reached on day ${n}.` : `Worked on it for ${n} ${n === 1 ? 'day' : 'days'}.`;
+  const entry: any = {
+    userId: p.uid,
+    text: [`${head}${g.want.trim() ? `: ${g.want.trim()}` : ''}`, lines.join('\n'), days].filter(Boolean).join('\n\n'),
+    title: `${head} - ${longDate(p.now)}`,
+    tags: ['goal', p.outcome === 'reached' ? 'goal-reached' : 'goal-set-aside'],
+    entryMode: 'goal',
+    goalOutcome: p.outcome,
+    goal: {want: g.want, imagine: g.imagine, snags: g.snags, how: g.how},
+    createdAt: p.ts,
+    updatedAt: p.ts,
+  };
+  if (p.startDate) entry.goalStartDate = p.startDate;
+  if (p.timelineDays) entry.goalTimelineDays = p.timelineDays;
+  return applyExtras(entry, p.extras);
+}
+
 // ─── InkBlot (old handleSaveInkblot) ───
 export function inkblotPayload(p: Base & {text: string}) {
   const time = p.now.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});
