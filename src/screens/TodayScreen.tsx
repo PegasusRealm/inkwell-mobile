@@ -59,9 +59,9 @@ const QUESTIONS: Array<[string, string, string]> = [
   ['What do you need ', 'more', ' of this week?'],
 ];
 
+// The page above is free-write (with its timer), so the other ways in are just these two
+// (options pass, Adam 2026-10-01).
 const WAYS: Array<{mode: WriteMode; label: string}> = [
-  {mode: 'free', label: 'Free-write'},
-  {mode: 'sprint', label: 'Sprint'},
   {mode: 'gratitude', label: 'Gratitude'},
   {mode: 'reframe', label: 'Reframe'},
 ];
@@ -271,6 +271,7 @@ const TodayScreen: React.FC<TabScreenProps<'Today'>> = ({navigation}) => {
               <Text style={styles.memoryText}>
                 InkWell is now Castalia. Your entries, your goals, and Sophy are all here, just as you left them.
               </Text>
+              <Text style={styles.memoryMeta}>Looking for Sprint? It's the clock at the bottom of the writing page.</Text>
               <Text style={styles.memoryMeta}>Some emails, texts, and receipts may still say InkWell for a little while.</Text>
               <View style={styles.renameAct}>
                 <IWButton small title="Got it" onPress={dismissRename} />

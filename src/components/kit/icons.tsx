@@ -158,3 +158,11 @@ export const ChevronLeftIcon: React.FC<IconProps> = ({size = 18, color, strokeWi
     <Path d="M15 6l-6 6 6 6" {...S(color, strokeWidth)} />
   </Svg>
 );
+
+/** Timed write (Sprint folded into the page, 2026-10-01) */
+export const TimerIcon: React.FC<IconProps> = ({size = 20, color, strokeWidth = 1.9}) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Path d="M20 13.5a8 8 0 11-16 0 8 8 0 0116 0z" {...S(color, strokeWidth)} />
+    <Path d="M12 9.5v4l2.5 2M9.5 2.5h5" {...S(color, strokeWidth)} />
+  </Svg>
+);

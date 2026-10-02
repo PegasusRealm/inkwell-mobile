@@ -1,6 +1,9 @@
 /**
- * WriteScreen (v2.0, 2026-10-01): the full-screen writing room. No tabs. Every way in
- * lives here: Free-write, Sprint, Gratitude (five practices), Reframe, InkBlot.
+ * WriteScreen (v2.0, 2026-10-01): the full-screen writing room. No tabs. Three ways in:
+ * Free-write (with an optional timer, which is what Sprint was), Gratitude (three practices,
+ * one on screen at a time), Reframe. Options pass (Adam, 2026-10-01): InkBlot retired,
+ * Sprint folded into the page, Savor folded into One, deeply, Without It retired, the
+ * Plus voice read moved to Kept, and the "how heavy" check shrank to one quiet line.
  * Built from the 26.185.2 JournalScreen: same handlers, same saved documents (see
  * services/entryPayloads.ts and its golden tests). What moved:
  *   - the date line, the big question, FirstSteps and the memory card now live on Today
@@ -24,13 +27,12 @@ import {
   Image,
   useWindowDimensions,
   KeyboardAvoidingView,
-  Linking,
   Animated,
+  Share,
 } from 'react-native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import auth from '@react-native-firebase/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Clipboard from '@react-native-clipboard/clipboard';
 // Wrap Voice import to handle iOS compatibility issues
 let Voice: any = null;
 try {
@@ -50,12 +52,13 @@ import {useSubscription} from '../hooks/useSubscription';
 import {checkAIAccess, incrementAIUsage, AI_DAILY_LIMIT} from '../services/aiUsageService';
 import PaywallModal from '../components/PaywallModal';
 import InfoModal, {InfoHighlightBox, InfoParagraph, InfoDivider, InfoSection} from '../components/InfoModal';
-import {Card, IWButton, Pill, Divider} from '../components/kit';
-import {CloseIcon, MicIcon, TagIcon, PhotoIcon, CheckIcon} from '../components/kit/icons';
+import {IWButton, Pill, Divider} from '../components/kit';
+import {CloseIcon, MicIcon, TagIcon, PhotoIcon, TimerIcon} from '../components/kit/icons';
 import {SophyOrb} from '../components/kit/SophyBlock';
 import {CoachHint} from '../components/FirstStepsCard';
 import {FirstStepsService} from '../services/firstStepsService';
-import type {RootStackScreenProps, WriteMode, GratPractice} from '../navigation/types';
+import type {RootStackScreenProps, WriteMode, GratPractice, KeptParams} from '../navigation/types';
+import {toWriteMode, toGratPractice} from '../navigation/types';
 import {iPadContentStyle, showActionSheet} from '../utils/iPad';
 import {
   freeWritePayload,
@@ -63,8 +66,7 @@ import {
   reframePayload,
   gratitudeThreePayload,
   gratitudePracticePayload,
-  sprintPayload,
-  inkblotPayload,
+  markTimedWrite,
   tzOffsetMinutes,
   wordCount as countWords,
   Practice,
@@ -75,32 +77,22 @@ import {GRAT_DONE_KEY, todayKey, suggestedGratitudePractice} from '../services/w
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GRATITUDE PROTOCOL ENGINE — ported verbatim from web app.html (v2 Phase 2a)
-// Five evidence-based practices, rotated to prevent habituation
-// (Emmons & McCullough 2003; Seligman et al. 2005; Koo et al. 2008;
-//  Lyubomirsky et al. 2005; Bryant & Veroff 2007)
+// Three evidence-based practices, one suggested each day so it doesn't wear thin
+// (Emmons & McCullough 2003; Seligman et al. 2005; Lyubomirsky et al. 2005;
+//  Bryant & Veroff 2007). Options pass 2026-10-01: Savor folded into One, deeply;
+//  Without It (mental subtraction) retired, since it asks people to imagine a loss.
 // ═══════════════════════════════════════════════════════════════════════════
-const GRATITUDE_SUBTEXT: Record<GratPractice, string> = {
-  three: 'Three specific good things, big or small.',
-  deep: 'One good thing, in depth. Depth beats a long list.',
-  subtraction: 'Imagine life without a good thing. It renews its pull.',
-  letter: 'A letter to someone who helped you. Sending it is optional.',
-  savor: 'One good moment, in full detail.',
+const GRATITUDE_NAME: Record<GratPractice, string> = {
+  three: 'Three good things',
+  deep: 'One, deeply',
+  letter: 'A letter',
 };
-
-const SUBTRACTION_PROMPTS = [
-  "Think of a person you're glad is in your life. Imagine the day you almost didn't meet them. What would this week have looked like without them?",
-  "Picture a choice you made that turned out well. Imagine you'd chosen differently. What good thing wouldn't exist now?",
-  'Think of your home, or a place you feel safe. Imagine never having found it. Where would you be instead?',
-  'Think of a routine that steadies your day. Imagine it gone tomorrow. What does it quietly hold together?',
-  "Think of someone who taught you something important. Imagine they'd never crossed your path. What would you not know today?",
-  "Picture a friendship that almost didn't happen. Trace the near-miss. What did luck hand you that day?",
-  'Think of a small comfort you rely on every day. Imagine a week without it. What does it quietly do for you?',
-  'Recall an opportunity you almost turned down. Imagine you had. What chain of good things breaks?',
-  'Think of a tool or object you rely on daily. Imagine it gone for a month. What does it actually carry for you?',
-  "Picture someone who forgave you once. Imagine they hadn't. What would be different between you now?",
-  "Think of a hard season that ended. Imagine it hadn't ended yet. What does its absence give you today?",
-  'Recall a small kindness a stranger showed you. Imagine that moment never happened. What did it change?',
-];
+const GRATITUDE_SUBTEXT: Record<GratPractice, string> = {
+  three: 'Big or small. Specific beats general.',
+  deep: 'Stay with one. Depth beats a long list.',
+  letter: 'To someone who helped you. Sending it is optional.',
+};
+const GRAT_ORDER: GratPractice[] = ['three', 'deep', 'letter'];
 
 const SAVOR_NUDGES = [
   'What did it sound like?',
@@ -128,21 +120,15 @@ async function gratEngineFetch(payload: object): Promise<{ok: boolean; status: n
 
 const MODE_LABEL: Record<WriteMode, string> = {
   free: 'Free-write',
-  sprint: 'Sprint',
   gratitude: 'Gratitude',
   reframe: 'Reframe',
-  inkblot: 'InkBlot',
 };
 const MODE_PRACTICE: Record<WriteMode, Practice> = {
   free: 'freewrite',
-  sprint: 'sprint',
   gratitude: 'gratitude',
   reframe: 'reframe',
-  inkblot: 'inkblot',
 };
-// InkBlot retired 2026-10-01 (Adam): Today's page and Sprint already cover quick capture. Its code
-// stays until the 2.0 options pass removes it; old InkBlot entries still read normally in Entries.
-const MODES: WriteMode[] = ['free', 'sprint', 'gratitude', 'reframe'];
+const MODES: WriteMode[] = ['free', 'gratitude', 'reframe'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FEEL CHECK — optional 1-5 "how heavy" before writing. LAW: a self-rated feel,
@@ -157,51 +143,49 @@ interface FeelCheckProps {
 }
 
 export const FeelCheck: React.FC<FeelCheckProps> = ({question, selected, onTap, colors}) => (
-  <View style={[feelStyles.row, {borderColor: colors.borderLight}]}>
+  <View style={feelStyles.row} accessibilityRole="radiogroup" accessibilityLabel={`${question} Optional. 1 is light, 5 is heavy.`}>
     <Text style={[feelStyles.q, {color: colors.fontSecondary}]}>{question}</Text>
     <View style={feelStyles.scale}>
+      <Text style={[feelStyles.end, {color: colors.fontMuted}]}>Light</Text>
       {[1, 2, 3, 4, 5].map(n => (
-        <View key={n} style={feelStyles.col}>
-          <TouchableOpacity
-            accessibilityRole="button"
-            accessibilityLabel={`${n}${n === 1 ? ', light' : n === 5 ? ', heavy' : ''}`}
-            accessibilityState={{selected: selected === n}}
-            style={[
-              feelStyles.dot,
-              {borderColor: colors.borderMedium, backgroundColor: colors.bgCard},
-              selected === n && {backgroundColor: colors.btnPrimary, borderColor: colors.btnPrimary},
-            ]}
-            onPress={() => onTap(selected === n ? 0 : n)}
-            hitSlop={{top: 6, bottom: 6, left: 4, right: 4}}>
-            <Text style={[feelStyles.dotText, {color: selected === n ? colors.fontWhite : colors.fontSecondary}]}>
-              {n}
-            </Text>
-          </TouchableOpacity>
-          <Text style={[feelStyles.end, {color: colors.fontMuted}]}>{n === 1 ? 'Light' : n === 5 ? 'Heavy' : ' '}</Text>
-        </View>
+        <TouchableOpacity
+          key={n}
+          accessibilityRole="radio"
+          accessibilityLabel={`${n}${n === 1 ? ', light' : n === 5 ? ', heavy' : ''}`}
+          accessibilityHint={selected === n ? 'Tap again to clear' : undefined}
+          accessibilityState={{selected: selected === n}}
+          style={[
+            feelStyles.dot,
+            {borderColor: colors.borderMedium, backgroundColor: colors.bgCard},
+            selected === n && {backgroundColor: colors.btnPrimary, borderColor: colors.btnPrimary},
+          ]}
+          onPress={() => onTap(selected === n ? 0 : n)}
+          hitSlop={{top: 6, bottom: 6, left: 5, right: 5}}>
+          <Text style={[feelStyles.dotText, {color: selected === n ? colors.fontWhite : colors.fontSecondary}]}>{n}</Text>
+        </TouchableOpacity>
       ))}
+      <Text style={[feelStyles.end, {color: colors.fontMuted}]}>Heavy</Text>
     </View>
-    <Text style={[feelStyles.hint, {color: colors.fontMuted}]}>Optional. Tap again to clear.</Text>
   </View>
 );
 
+// One quiet line (options pass, 2026-10-01): no box, no hint line. It wraps under the
+// question on narrow phones. Ends stay labeled so nobody has to guess which way is heavy.
 const feelStyles = StyleSheet.create({
   row: {
-    gap: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderStyle: 'dashed',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    columnGap: 12,
+    rowGap: 8,
     marginBottom: spacing.lg,
   },
   q: {fontFamily: fontFamily.body, fontSize: 15, lineHeight: 21},
-  scale: {flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4},
-  col: {alignItems: 'center', gap: 4, minWidth: 48},
-  dot: {width: 36, height: 36, borderRadius: 18, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center'},
-  dotText: {fontFamily: fontFamily.buttonBold, fontSize: 15},
+  scale: {flexDirection: 'row', alignItems: 'center', gap: 8},
+  dot: {width: 34, height: 34, borderRadius: 17, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center'},
+  dotText: {fontFamily: fontFamily.buttonBold, fontSize: 14},
   end: {fontFamily: fontFamily.body, fontSize: 13},
-  hint: {fontFamily: fontFamily.body, fontSize: 15},
 });
 
 const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route}) => {
@@ -216,12 +200,12 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
 
   const {checkFeatureAndShowPaywall, hasFeatureAccess, isPremium, showPaywall, closePaywall} = useSubscription();
 
-  // The way in. Opens on whatever Today asked for; free-write otherwise.
-  const [mode, setMode] = useState<WriteMode>(params.mode || 'free');
+  // The way in. Opens on whatever Today asked for; free-write otherwise (retired ways too).
+  const [mode, setMode] = useState<WriteMode>(toWriteMode(params.mode));
+  const paramPractice = toGratPractice(params.gratPractice);
 
   // Info Modal State
   const [showGratitudeInfo, setShowGratitudeInfo] = useState(false);
-  const [showInkblotInfo, setShowInkblotInfo] = useState(false);
 
   // Gratitude nudge dot (coral on the Gratitude pill until saved today)
   const [gratDoneToday, setGratDoneToday] = useState(true); // assume done until read
@@ -243,60 +227,37 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
   const [savingGratitude, setSavingGratitude] = useState(false);
   const [gratitudeStatus, setGratitudeStatus] = useState('');
 
-  // Gratitude protocol engine state (deep / subtraction / letter / savor)
-  const [activeGratPractice, setActiveGratPractice] = useState<GratPractice>(params.gratPractice || 'three');
+  // Gratitude practices (three / deep / letter): one on screen; "Try another way" shows the rest
+  const suggestedPractice = useMemo(() => suggestedGratitudePractice(), []);
+  const [activeGratPractice, setActiveGratPractice] = useState<GratPractice>(paramPractice || suggestedPractice);
+  const [showGratChoices, setShowGratChoices] = useState(false);
   const [gratDeepText, setGratDeepText] = useState('');
-  const [gratSubtractionText, setGratSubtractionText] = useState('');
-  const [gratSubtractionPrompt, setGratSubtractionPrompt] = useState('');
+  const [gratDeepNudge, setGratDeepNudge] = useState(() => SAVOR_NUDGES[Math.floor(Math.random() * SAVOR_NUDGES.length)]);
   const [gratLetterTo, setGratLetterTo] = useState('');
   const [gratLetterText, setGratLetterText] = useState('');
-  const [gratSavorText, setGratSavorText] = useState('');
-  const [gratSavorNudge, setGratSavorNudge] = useState('');
   const [letterAssistLoading, setLetterAssistLoading] = useState(false);
-  const [personalizingPrompt, setPersonalizingPrompt] = useState(false);
-  const suggestedPractice = useMemo(() => suggestedGratitudePractice(), []);
 
-  const shuffleSubtractionPrompt = useCallback(() => {
-    setGratSubtractionPrompt(prev => {
-      let next = prev;
-      while (next === prev) {
-        next = SUBTRACTION_PROMPTS[Math.floor(Math.random() * SUBTRACTION_PROMPTS.length)];
-      }
-      return next;
-    });
+  const switchGratPractice = useCallback((p: GratPractice) => {
+    setActiveGratPractice(p);
+    setShowGratChoices(false);
+    if (p === 'deep') setGratDeepNudge(SAVOR_NUDGES[Math.floor(Math.random() * SAVOR_NUDGES.length)]);
   }, []);
 
-  const switchGratPractice = useCallback(
-    (p: GratPractice) => {
-      setActiveGratPractice(p);
-      if (p === 'subtraction') {
-        setGratSubtractionPrompt(prev => prev || SUBTRACTION_PROMPTS[Math.floor(Math.random() * SUBTRACTION_PROMPTS.length)]);
-      }
-      if (p === 'savor') {
-        setGratSavorNudge(SAVOR_NUDGES[Math.floor(Math.random() * SAVOR_NUDGES.length)]);
-      }
-    },
-    [],
-  );
-  // Opening straight into a practice from Today sets up its prompt or nudge too.
-  useEffect(() => {
-    if (params.gratPractice) switchGratPractice(params.gratPractice);
-  }, [params.gratPractice, switchGratPractice]);
-
-  // InkBlot state
-  const [inkblotText, setInkblotText] = useState('');
-  const [savingInkblot, setSavingInkblot] = useState(false);
-  const [inkblotRecording, setInkblotRecording] = useState(false);
-  const [inkblotStatus, setInkblotStatus] = useState('');
-
-  // Sprint (Pennebaker & Beall 1986; Frattaroli 2006)
+  // Timed write: what Sprint was, now a timer on the free-write page
+  // (Pennebaker & Beall 1986; Frattaroli 2006)
+  const [timerOpen, setTimerOpen] = useState(params.mode === 'sprint');
   const [sprintMinutes, setSprintMinutes] = useState<15 | 20>(15);
   const [sprintRunning, setSprintRunning] = useState(false);
   const [sprintDisplay, setSprintDisplay] = useState('15:00');
   const [sprintIdle, setSprintIdle] = useState(false);
-  const [sprintText, setSprintText] = useState('');
-  const [savingSprint, setSavingSprint] = useState(false);
-  const [sprintStatus, setSprintStatus] = useState('');
+  /** The timer was started for the words now on the page (saved as a timed write). */
+  const timedRef = useRef(false);
+  /** Minutes chosen when the timer started, and when, so a mis-tap (stopped inside a minute) doesn't count. */
+  const timedMinutesRef = useRef<15 | 20>(15);
+  const timerStartedAtRef = useRef(0);
+  /** Whether the page already counted as timed before this start (a quick Stop restores it). */
+  const timedBeforeStartRef = useRef(false);
+  const timedMinutesBeforeStartRef = useRef<15 | 20>(15);
   const sprintEndsAtRef = useRef<number | null>(null);
   const sprintLastKeyRef = useRef(0);
   const sprintBreath = useRef(new Animated.Value(0)).current;
@@ -329,10 +290,9 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
   const [saving, setSaving] = useState(false);
   const [journalStatus, setJournalStatus] = useState('');
 
-  // Plus voice cleanup returns Sophy's line about the voice note; it's saved as reflectionUsed
+  // Plus voice cleanup returns a read of the voice (tone, energy) and Sophy's line about it.
+  // It is shown on Kept, after writing, and saved there only if they choose to.
   const [voiceReflection, setVoiceReflection] = useState('');
-  // Sophy's note on a spoken entry is kept only if they choose to (same rule as the old checkbox).
-  const [keepVoiceNote, setKeepVoiceNote] = useState(false);
   const [emotionalInsights, setEmotionalInsights] = useState<{
     primaryEmotion?: string;
     confidence?: number;
@@ -441,12 +401,12 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       if (e.value && e.value[0]) setVoiceText(e.value[0]);
     };
     Voice.onSpeechPartialResults = (e: any) => {
+      sprintLastKeyRef.current = Date.now(); // speaking counts as writing for the timer's idle nudge
       if (e.value && e.value[0]) setVoicePartialText(e.value[0]);
     };
     Voice.onSpeechError = (e: any) => {
       console.error('Speech error:', e.error);
       setIsRecording(false);
-      setInkblotRecording(false);
       if (e.error?.message && !e.error.message.includes('No speech')) {
         Alert.alert("Couldn't catch that", 'Try again, a little closer to the phone.');
       }
@@ -659,18 +619,16 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
   // Every text field in Write, which way it belongs to, and how to clear it. Used so that
   // keeping one way never silently drops words typed in another (Bruce, 2026-10-01).
   type FieldKey =
-    | 'journalEntry' | 'sprintText' | 'inkblotText'
+    | 'journalEntry'
     | 'reframe1' | 'reframe2' | 'reframe3' | 'reframe4'
     | 'gratitude1' | 'gratitude2' | 'gratitude3'
-    | 'gratDeepText' | 'gratSubtractionText' | 'gratLetterText' | 'gratSavorText';
+    | 'gratDeepText' | 'gratLetterText';
   const fieldValues: Record<FieldKey, string> = {
-    journalEntry, sprintText, inkblotText, reframe1, reframe2, reframe3, reframe4,
-    gratitude1, gratitude2, gratitude3, gratDeepText, gratSubtractionText, gratLetterText, gratSavorText,
+    journalEntry, reframe1, reframe2, reframe3, reframe4,
+    gratitude1, gratitude2, gratitude3, gratDeepText, gratLetterText,
   };
   const FIELD_HOME: Record<FieldKey, {mode: WriteMode; grat?: GratPractice}> = {
     journalEntry: {mode: 'free'},
-    sprintText: {mode: 'sprint'},
-    inkblotText: {mode: 'inkblot'},
     reframe1: {mode: 'reframe'},
     reframe2: {mode: 'reframe'},
     reframe3: {mode: 'reframe'},
@@ -679,9 +637,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
     gratitude2: {mode: 'gratitude', grat: 'three'},
     gratitude3: {mode: 'gratitude', grat: 'three'},
     gratDeepText: {mode: 'gratitude', grat: 'deep'},
-    gratSubtractionText: {mode: 'gratitude', grat: 'subtraction'},
     gratLetterText: {mode: 'gratitude', grat: 'letter'},
-    gratSavorText: {mode: 'gratitude', grat: 'savor'},
   };
   const clearField: Record<FieldKey, () => void> = {
     journalEntry: () => {
@@ -690,11 +646,11 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       setAttachments([]);
       setPrompt('');
       setVoiceReflection('');
-      setKeepVoiceNote(false);
       setEmotionalInsights(null);
+      timedRef.current = false;
+      setTimerOpen(false);
+      setSprintDisplay(`${sprintMinutes}:00`);
     },
-    sprintText: () => setSprintText(''),
-    inkblotText: () => setInkblotText(''),
     reframe1: () => setReframe1(''),
     reframe2: () => setReframe2(''),
     reframe3: () => setReframe3(''),
@@ -703,9 +659,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
     gratitude2: () => setGratitude2(''),
     gratitude3: () => setGratitude3(''),
     gratDeepText: () => setGratDeepText(''),
-    gratSubtractionText: () => setGratSubtractionText(''),
     gratLetterText: () => setGratLetterText(''),
-    gratSavorText: () => setGratSavorText(''),
   };
 
   /**
@@ -713,18 +667,26 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
    * If another way still holds words, Write stays underneath on that way, and Kept's
    * Done brings them back to it instead of to Today.
    */
-  const goKept = (entryId: string, text: string, m: WriteMode, words: number, saved: FieldKey[]) => {
+  const goKept = (
+    entryId: string,
+    text: string,
+    m: WriteMode,
+    words: number,
+    saved: FieldKey[],
+    more: Pick<KeptParams, 'voiceRead' | 'timed'> = {},
+  ) => {
     markFirstEntry();
     const firstSave = FirstStepsService.isQuestActive() && !FirstStepsService.getState()?.save;
     FirstStepsService.complete('save');
-    const kept = {
+    const kept: KeptParams = {
       entryId,
       text,
       mode: m,
       words,
-      minutes: m === 'sprint' ? sprintMinutes : minutesSinceOpen(),
+      minutes: minutesSinceOpen(),
       hadFeelBefore: feelBefore > 0,
       firstSave,
+      ...more,
     };
     const remaining = (Object.keys(fieldValues) as FieldKey[]).filter(
       k => !saved.includes(k) && fieldValues[k].trim().length > 0,
@@ -738,7 +700,6 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
     // The next entry starts fresh: its own before-rating, and not marked as spoken
     setFeelBefore(0);
     usedVoiceRef.current = false;
-    inkblotVoiceRef.current = false;
     const home = FIELD_HOME[remaining[0]];
     setMode(home.mode);
     if (home.grat) setActiveGratPractice(home.grat);
@@ -787,10 +748,20 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
         tags: entryTags,
         manifest,
         promptUsed: prompt || undefined,
-        reflectionUsed: keepVoiceNote && voiceReflection ? voiceReflection : undefined,
         attachments: uploadedAttachments,
         extras: extrasFor('free', usedVoiceRef.current),
       });
+      // A timed write keeps Sprint's record shape: practice 'sprint', the sprint tag, its minutes
+      const timed = timedRef.current;
+      if (timed) markTimedWrite(entryData, timedMinutesRef.current);
+      const voiceRead =
+        emotionalInsights || voiceReflection
+          ? {
+              tone: emotionalInsights?.primaryEmotion || undefined,
+              energy: emotionalInsights?.energyLevel || undefined,
+              note: voiceReflection || undefined,
+            }
+          : undefined;
       const savedEntry = await firestore().collection('journalEntries').add(entryData);
 
       // Embeddings in the background (non-blocking), for Ask your journal
@@ -810,7 +781,8 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
         }
       })();
 
-      goKept(savedEntry.id, journalEntry, 'free', countWords(journalEntry), ['journalEntry']);
+      if (sprintRunning) stopSprintTimer(true);
+      goKept(savedEntry.id, journalEntry, 'free', countWords(journalEntry), ['journalEntry'], {voiceRead, timed});
     } catch (error: any) {
       console.error('Error saving entry:', error);
       flashStatus(setJournalStatus, "Couldn't keep this. Your words are still here. Try again.", 5000);
@@ -864,13 +836,11 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
     }
   };
 
-  // ==================== GRATITUDE PRACTICE SAVE (deep/subtraction/letter/savor) ====================
+  // ==================== GRATITUDE PRACTICE SAVE (deep / letter) ====================
   const handleSaveGratitudePractice = async (m: Exclude<GratPractice, 'three'>) => {
     const fieldMap: Record<string, string> = {
       deep: gratDeepText,
-      subtraction: gratSubtractionText,
       letter: gratLetterText,
-      savor: gratSavorText,
     };
     const text = fieldMap[m]?.trim();
     if (!text) {
@@ -887,7 +857,6 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
         now: new Date(),
         mode: m,
         text,
-        subtractionPrompt: gratSubtractionPrompt,
         letterTo: gratLetterTo,
         extras: extrasFor('gratitude'),
       });
@@ -895,9 +864,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       await markGratDoneToday();
       const practiceField: Record<typeof m, FieldKey> = {
         deep: 'gratDeepText',
-        subtraction: 'gratSubtractionText',
         letter: 'gratLetterText',
-        savor: 'gratSavorText',
       };
       goKept(docRef.id, entryData.text, 'gratitude', countWords(text), [practiceField[m]]);
     } catch (e) {
@@ -938,69 +905,22 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
     }
   };
 
-  const handleCopyGratitudeLetter = () => {
+  // One Share button (options pass): the phone's share sheet covers copy, email and text.
+  const handleShareLetter = async () => {
     const t = gratLetterText.trim();
-    if (!t) return;
-    Clipboard.setString(t);
-    flashStatus(setGratitudeStatus, 'Copied.', 2000);
-  };
-
-  // Email the letter to yourself — mirrors web emailGratitudeLetterToSelf (mailto fallback)
-  const handleEmailLetterToSelf = async () => {
-    const t = gratLetterText.trim();
-    if (!t) return;
+    if (!t) {
+      flashStatus(setGratitudeStatus, 'Write the letter first, then share it if you want to.');
+      return;
+    }
     const to = gratLetterTo.trim();
-    setGratitudeStatus('Sending to your email...');
     try {
-      const r = await gratEngineFetch({action: 'emailLetter', letterText: t, recipientName: to});
-      if (r.ok && r.data.sent) {
-        flashStatus(setGratitudeStatus, 'Sent to your email.');
-        return;
-      }
-      throw new Error(r.data.error || 'send failed');
-    } catch (e: any) {
-      console.warn('emailLetter fell back to mailto:', e.message);
-      const email = auth().currentUser?.email || '';
-      const url =
-        'mailto:' +
-        encodeURIComponent(email) +
-        '?subject=' +
-        encodeURIComponent('Gratitude letter' + (to ? ' to ' + to : '')) +
-        '&body=' +
-        encodeURIComponent(t);
-      Linking.openURL(url).catch(() => flashStatus(setGratitudeStatus, "Couldn't open your mail app."));
-      setGratitudeStatus('');
-    }
-  };
-
-  // Personalized subtraction prompt from the person's own journal (Plus)
-  const handlePersonalSubtractionPrompt = async () => {
-    setPersonalizingPrompt(true);
-    try {
-      const r = await gratEngineFetch({action: 'personalSubtraction'});
-      if (r.status === 403 && r.data.code === 'UPGRADE_REQUIRED') {
-        checkFeatureAndShowPaywall('ai');
-        return;
-      }
-      if (r.ok && r.data.code === 'NOT_ENOUGH_HISTORY') {
-        flashStatus(setGratitudeStatus, r.data.message, 4000);
-        return;
-      }
-      if (r.ok && r.data.prompt) {
-        setGratSubtractionPrompt(String(r.data.prompt));
-        flashStatus(setGratitudeStatus, 'From your own journal.');
-        return;
-      }
-      flashStatus(setGratitudeStatus, "Couldn't personalize right now.");
+      await Share.share({message: t, title: 'Gratitude letter' + (to ? ' to ' + to : '')});
     } catch (e) {
-      console.error('personalSubtraction failed:', e);
-      flashStatus(setGratitudeStatus, "Couldn't personalize right now.");
-    } finally {
-      setPersonalizingPrompt(false);
+      console.warn('Share failed:', e);
     }
   };
 
-  // ==================== SPRINT TIMER ====================
+  // ==================== TIMED WRITE (the free-write timer) ====================
   const stopSprintTimer = useCallback(
     (resetLabel: boolean) => {
       setSprintRunning(false);
@@ -1013,11 +933,21 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
 
   const toggleSprint = () => {
     if (sprintRunning) {
+      // Stopped inside the first minute reads as a mis-tap: the entry isn't labeled a timed write
+      if (Date.now() - timerStartedAtRef.current < 60000) {
+        timedRef.current = timedBeforeStartRef.current;
+        timedMinutesRef.current = timedMinutesBeforeStartRef.current;
+      }
       stopSprintTimer(true);
       return;
     }
     sprintEndsAtRef.current = Date.now() + sprintMinutes * 60000;
     sprintLastKeyRef.current = Date.now();
+    timerStartedAtRef.current = Date.now();
+    timedBeforeStartRef.current = timedRef.current;
+    timedMinutesBeforeStartRef.current = timedMinutesRef.current;
+    timedMinutesRef.current = sprintMinutes;
+    timedRef.current = true;
     setSprintRunning(true);
   };
 
@@ -1063,112 +993,23 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
     sprintBreath.setValue(0);
   }, [sprintRunning, sprintIdle, sprintBreath]);
 
-  // Leaving Sprint stops its timer
+  // Switching to another way in stops the timer (the words stay on the page)
   useEffect(() => {
-    if (mode !== 'sprint' && sprintRunning) stopSprintTimer(false);
+    if (mode !== 'free' && sprintRunning) stopSprintTimer(false);
   }, [mode, sprintRunning, stopSprintTimer]);
 
-  const handleSprintInput = (text: string) => {
-    setSprintText(text);
+  const onFreeWriteChange = (t: string) => {
+    setJournalEntry(t);
+    if (!t.trim() && !sprintRunning) timedRef.current = false; // a cleared page starts untimed
+    if (t.trim()) FirstStepsService.complete('write');
     sprintLastKeyRef.current = Date.now();
     if (sprintIdle) setSprintIdle(false);
-  };
-
-  // ==================== SPRINT SAVE ====================
-  const handleSaveSprint = async () => {
-    const text = sprintText.trim();
-    if (!text) {
-      flashStatus(setSprintStatus, 'Write first, keep it after.');
-      return;
-    }
-    setSavingSprint(true);
-    try {
-      const user = auth().currentUser;
-      if (!user) return;
-      const entryData = sprintPayload({uid: user.uid, ts: ts(), now: new Date(), text, minutes: sprintMinutes, extras: extrasFor('sprint')});
-      const docRef = await firestore().collection('journalEntries').add(entryData);
-      stopSprintTimer(true);
-      goKept(docRef.id, entryData.text, 'sprint', countWords(text), ['sprintText']);
-    } catch (e) {
-      console.error('Sprint save failed:', e);
-      flashStatus(setSprintStatus, "Couldn't keep this. Your writing is still here. Try again.", 5000);
-    } finally {
-      setSavingSprint(false);
-    }
-  };
-
-  // ==================== INKBLOT SAVE ====================
-  const inkblotVoiceRef = useRef(false);
-  const handleSaveInkblot = async () => {
-    if (!inkblotText.trim()) {
-      flashStatus(setInkblotStatus, 'Jot a thought first.');
-      return;
-    }
-    setSavingInkblot(true);
-    try {
-      const user = auth().currentUser;
-      if (!user) return;
-      const entryData = inkblotPayload({
-        uid: user.uid,
-        ts: ts(),
-        now: new Date(),
-        text: inkblotText,
-        extras: extrasFor('inkblot', inkblotVoiceRef.current),
-      });
-      const docRef = await firestore().collection('journalEntries').add(entryData);
-      goKept(docRef.id, entryData.text, 'inkblot', countWords(inkblotText), ['inkblotText']);
-    } catch (error: any) {
-      console.error('Error saving InkBlot:', error);
-      flashStatus(setInkblotStatus, "Couldn't keep this. Try again.");
-    } finally {
-      setSavingInkblot(false);
-    }
-  };
-
-  // ==================== INKBLOT VOICE ====================
-  const handleInkblotVoiceToggle = async () => {
-    if (!Voice) {
-      Alert.alert('Voice unavailable', 'Speaking is not available on this device.');
-      return;
-    }
-    if (inkblotRecording) {
-      try {
-        await Voice.stop();
-        setInkblotRecording(false);
-        const recognizedText = voiceText || voicePartialText;
-        if (recognizedText && recognizedText.trim().length > 0) {
-          inkblotVoiceRef.current = true;
-          setInkblotText(prev => (prev + (prev ? ' ' : '') + recognizedText.trim()).slice(0, 500));
-        }
-        setVoiceText('');
-        setVoicePartialText('');
-      } catch (error) {
-        console.error('Stop recording error:', error);
-        setInkblotRecording(false);
-      }
-    } else {
-      if (!(await requestMicrophonePermission())) {
-        Alert.alert('Microphone is off', 'Turn on microphone access for Castalia in your phone settings.');
-        return;
-      }
-      try {
-        setVoiceText('');
-        setVoicePartialText('');
-        await Voice.start('en-US');
-        setInkblotRecording(true);
-      } catch (error: any) {
-        console.error('Voice start error:', error);
-        Alert.alert("Couldn't start listening", 'Please try again.');
-      }
-    }
   };
 
   // ==================== leaving ====================
   const hasUnsavedWords = () =>
     [
       journalEntry,
-      sprintText,
-      inkblotText,
       reframe1,
       reframe2,
       reframe3,
@@ -1177,9 +1018,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       gratitude2,
       gratitude3,
       gratDeepText,
-      gratSubtractionText,
       gratLetterText,
-      gratSavorText,
       voicePartialText, // words still being dictated count too
       voiceText,
     ].some(s => s.trim().length > 0);
@@ -1213,48 +1052,19 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
   };
 
   const quickChips = userTagLibrary.filter(t => !entryTags.includes(t)).slice(0, 8);
-  const headerCount =
-    mode === 'free'
-      ? `${countWords(journalEntry)} words`
-      : mode === 'sprint'
-      ? `${countWords(sprintText)} words`
-      : mode === 'inkblot'
-      ? `${inkblotText.length}/500`
-      : '';
-  const feelQuestion = 'How heavy is today?';
+  const headerCount = mode === 'free' ? `${countWords(journalEntry)} words` : '';
+  const feelQuestion = 'How heavy is today? (optional)';
 
   const keepHandler =
     mode === 'free'
       ? handleSave
-      : mode === 'sprint'
-      ? handleSaveSprint
       : mode === 'reframe'
       ? handleSaveReframe
-      : mode === 'inkblot'
-      ? handleSaveInkblot
       : activeGratPractice === 'three'
       ? handleSaveGratitude
       : () => handleSaveGratitudePractice(activeGratPractice as Exclude<GratPractice, 'three'>);
-  const keepLoading =
-    mode === 'free'
-      ? saving || uploadingFiles
-      : mode === 'sprint'
-      ? savingSprint
-      : mode === 'reframe'
-      ? savingReframe
-      : mode === 'inkblot'
-      ? savingInkblot
-      : savingGratitude;
-  const status =
-    mode === 'free'
-      ? journalStatus || voiceStatus
-      : mode === 'sprint'
-      ? sprintStatus
-      : mode === 'reframe'
-      ? reframeStatus
-      : mode === 'inkblot'
-      ? inkblotStatus
-      : gratitudeStatus;
+  const keepLoading = mode === 'free' ? saving || uploadingFiles : mode === 'reframe' ? savingReframe : savingGratitude;
+  const status = mode === 'free' ? journalStatus || voiceStatus : mode === 'reframe' ? reframeStatus : gratitudeStatus;
 
   return (
     <KeyboardAvoidingView style={styles.keyboardAvoid} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1292,8 +1102,8 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
 
       <ScrollView style={styles.container} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.scrollContent}>
         <View style={[styles.content, iPadContentStyle(screenWidth)]}>
-          {/* Sprint asks before the timer starts; everyone else asks up top */}
-          {!(mode === 'sprint' && sprintRunning) && (
+          {/* Asked up top, quietly; it steps aside while the timer runs */}
+          {!(mode === 'free' && sprintRunning) && (
             <FeelCheck question={feelQuestion} selected={feelBefore} onTap={setFeelBefore} colors={colors} />
           )}
 
@@ -1328,6 +1138,40 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
                 </TouchableOpacity>
               )}
 
+              {/* The timer (what Sprint was): opened from the clock in the footer */}
+              {timerOpen || sprintRunning ? (
+                <View style={styles.timerPanel}>
+                  {sprintRunning ? (
+                    // While it runs: only the time and a way to stop
+                    <View style={styles.timerRunRow}>
+                      <Text style={styles.sprintTimer}>{sprintDisplay}</Text>
+                      <IWButton voice="gray" small title="Stop timer" onPress={toggleSprint} />
+                    </View>
+                  ) : (
+                    <>
+                      <Text style={styles.timerTitle}>Timed write</Text>
+                      <Text style={styles.gratIntroLine}>
+                        Write without stopping about whatever is taking up space. Writing about hard things can stir them
+                        up before it settles them. That is normal. Go at your own depth.
+                      </Text>
+                      <View style={styles.sprintControls}>
+                        <Pill label="15 min" active={sprintMinutes === 15} onPress={() => handleSetSprintDuration(15)} />
+                        <Pill label="20 min" active={sprintMinutes === 20} onPress={() => handleSetSprintDuration(20)} />
+                        <IWButton voice="gray" small title="Start timer" onPress={toggleSprint} />
+                      </View>
+                      {sprintDisplay.startsWith('Time.') ? <Text style={styles.sprintTimer}>{sprintDisplay}</Text> : null}
+                      <Text style={styles.helpText}>
+                        In the studies, people wrote about the same topic 3 or 4 times over a week or two. Stop early or
+                        write past the timer. Both are fine.
+                      </Text>
+                    </>
+                  )}
+                  {sprintRunning && sprintIdle ? (
+                    <Text style={styles.sprintNudge}>Keep the pen moving. Grammar and sense don't matter here.</Text>
+                  ) : null}
+                </View>
+              ) : null}
+
               {isRecording ? (
                 <Text style={styles.listening}>
                   {voicePartialText ? `"${voicePartialText}"` : 'Listening. Tap the microphone when you are done.'}
@@ -1340,54 +1184,17 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
                 placeholder="The page is yours. Nothing here needs to be good. It just needs to be true."
                 placeholderTextColor={colors.fontMuted}
                 value={journalEntry}
-                onChangeText={t => {
-                  setJournalEntry(t);
-                  if (t.trim()) FirstStepsService.complete('write');
-                }}
+                onChangeText={onFreeWriteChange}
                 multiline
                 textAlignVertical="top"
                 editable={!saving}
                 autoFocus={!params.startVoice}
               />
 
-              {/* Plus voice analysis, dismissible */}
-              {emotionalInsights && (
-                <Card style={styles.insightsCard}>
-                  <Text style={styles.insightsTitle}>Your voice</Text>
-                  <View style={styles.insightsRow}>
-                    <View style={styles.insightsChip}>
-                      <Text style={styles.insightsLabel}>Tone</Text>
-                      <Text style={styles.insightsValue}>{emotionalInsights.primaryEmotion || 'Noted'}</Text>
-                    </View>
-                    <View style={styles.insightsChip}>
-                      <Text style={styles.insightsLabel}>Energy</Text>
-                      <Text style={styles.insightsValue}>{emotionalInsights.energyLevel || 'Steady'}</Text>
-                    </View>
-                  </View>
-                  {voiceReflection ? (
-                    <View style={styles.voiceNote}>
-                      <View style={styles.promptTop}>
-                        <SophyOrb size={18} />
-                        <Text style={styles.promptWho}>SOPHY'S NOTE</Text>
-                      </View>
-                      <Text style={styles.voiceNoteText}>{voiceReflection}</Text>
-                      <TouchableOpacity
-                        style={styles.keepNoteRow}
-                        onPress={() => setKeepVoiceNote(v => !v)}
-                        accessibilityRole="checkbox"
-                        accessibilityState={{checked: keepVoiceNote}}>
-                        <View style={[styles.keepNoteBox, keepVoiceNote && styles.keepNoteBoxOn]}>
-                          {keepVoiceNote ? <CheckIcon size={14} color={colors.fontWhite} /> : null}
-                        </View>
-                        <Text style={styles.keepNoteText}>Keep Sophy's note with this entry</Text>
-                      </TouchableOpacity>
-                    </View>
-                  ) : null}
-                  <TouchableOpacity style={styles.insightsDismiss} onPress={() => setEmotionalInsights(null)}>
-                    <Text style={styles.insightsDismissText}>Dismiss</Text>
-                  </TouchableOpacity>
-                </Card>
-              )}
+              {voiceReflection && !isRecording ? (
+                <Text style={styles.helpText}>Sophy heard something in your voice. You'll see it after you keep this.</Text>
+              ) : null}
+
               {!isPremium && usedVoiceRef.current && !isRecording ? (
                 <TouchableOpacity onPress={() => checkFeatureAndShowPaywall('ai')}>
                   <Text style={styles.quietLink}>Plus cleans up spoken words. See Plus</Text>
@@ -1468,35 +1275,32 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
           {mode === 'gratitude' && (
             <View>
               <Text style={styles.modeTitle}>What are you grateful for today?</Text>
-              <Text style={styles.modeSubtitle}>{GRATITUDE_SUBTEXT[activeGratPractice]}</Text>
+              <Text style={styles.modeSubtitle}>
+                <Text style={styles.gratName}>{GRATITUDE_NAME[activeGratPractice]}. </Text>
+                {GRATITUDE_SUBTEXT[activeGratPractice]}
+              </Text>
 
-              <View style={styles.pillRowCentered}>
-                <Pill label="Three" active={activeGratPractice === 'three'} onPress={() => switchGratPractice('three')} />
-                <Pill
-                  label="One, Deeply"
-                  active={activeGratPractice === 'deep'}
-                  onPress={() => switchGratPractice('deep')}
-                  showDot={suggestedPractice === 'deep'}
-                />
-                <Pill
-                  label="Without It"
-                  active={activeGratPractice === 'subtraction'}
-                  onPress={() => switchGratPractice('subtraction')}
-                  showDot={suggestedPractice === 'subtraction'}
-                />
-                <Pill
-                  label="Letter"
-                  active={activeGratPractice === 'letter'}
-                  onPress={() => switchGratPractice('letter')}
-                  showDot={suggestedPractice === 'letter'}
-                />
-                <Pill
-                  label="Savor"
-                  active={activeGratPractice === 'savor'}
-                  onPress={() => switchGratPractice('savor')}
-                  showDot={suggestedPractice === 'savor'}
-                />
-              </View>
+              {showGratChoices ? (
+                <View style={styles.pillRowCentered}>
+                  {GRAT_ORDER.map(gp => (
+                    <Pill
+                      key={gp}
+                      label={GRATITUDE_NAME[gp]}
+                      active={activeGratPractice === gp}
+                      onPress={() => switchGratPractice(gp)}
+                      showDot={suggestedPractice === gp && activeGratPractice !== gp}
+                    />
+                  ))}
+                </View>
+              ) : (
+                <TouchableOpacity
+                  onPress={() => setShowGratChoices(true)}
+                  style={styles.tryAnother}
+                  accessibilityRole="button"
+                  hitSlop={{top: 8, bottom: 8, left: 8, right: 8}}>
+                  <Text style={styles.quietLink}>Try another way</Text>
+                </TouchableOpacity>
+              )}
 
               {activeGratPractice === 'three' && (
                 <View>
@@ -1525,40 +1329,14 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
                   <Text style={styles.gratIntroLine}>What happened? Why did it happen? What was your part in it?</Text>
                   <TextInput
                     style={styles.gratTextarea}
-                    placeholder="One good thing, in depth..."
+                    placeholder="Start with what happened."
                     placeholderTextColor={colors.fontMuted}
                     value={gratDeepText}
                     onChangeText={setGratDeepText}
                     multiline
                     textAlignVertical="top"
                   />
-                </View>
-              )}
-
-              {activeGratPractice === 'subtraction' && (
-                <View>
-                  <View style={styles.gratPromptCard}>
-                    <Text style={styles.gratPromptText}>{gratSubtractionPrompt}</Text>
-                  </View>
-                  <View style={styles.gratRowButtons}>
-                    <IWButton voice="gray" small title="Try another" onPress={shuffleSubtractionPrompt} />
-                    <IWButton
-                      voice="sophy"
-                      small
-                      title={isPremium ? 'From your journal' : 'From your journal (Plus)'}
-                      onPress={handlePersonalSubtractionPrompt}
-                      loading={personalizingPrompt}
-                    />
-                  </View>
-                  <TextInput
-                    style={styles.gratTextarea}
-                    placeholder="Write what would be missing..."
-                    placeholderTextColor={colors.fontMuted}
-                    value={gratSubtractionText}
-                    onChangeText={setGratSubtractionText}
-                    multiline
-                    textAlignVertical="top"
-                  />
+                  {gratDeepNudge ? <Text style={styles.savorNudge}>{`Slow down on the details. ${gratDeepNudge}`}</Text> : null}
                 </View>
               )}
 
@@ -1588,25 +1366,8 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
                       onPress={handleSophyLetterAssist}
                       loading={letterAssistLoading}
                     />
-                    <IWButton voice="gray" small title="Copy" onPress={handleCopyGratitudeLetter} />
-                    <IWButton voice="gray" small title="Email me" onPress={handleEmailLetterToSelf} />
+                    <IWButton voice="gray" small title="Share" onPress={handleShareLetter} />
                   </View>
-                  <Text style={styles.helpText}>Sending is optional. Writing it is where the good lives.</Text>
-                </View>
-              )}
-
-              {activeGratPractice === 'savor' && (
-                <View>
-                  {gratSavorNudge ? <Text style={styles.savorNudge}>{gratSavorNudge}</Text> : null}
-                  <TextInput
-                    style={styles.gratTextarea}
-                    placeholder="One good moment from today, in full detail..."
-                    placeholderTextColor={colors.fontMuted}
-                    value={gratSavorText}
-                    onChangeText={setGratSavorText}
-                    multiline
-                    textAlignVertical="top"
-                  />
                 </View>
               )}
 
@@ -1641,100 +1402,28 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
               ))}
             </View>
           )}
-
-          {/* ================== SPRINT ================== */}
-          {mode === 'sprint' && (
-            <View>
-              <Text style={styles.gratIntroLine}>
-                A timed, continuous write about whatever is taking up space. Writing about hard things can stir them
-                up before it settles them. That is normal. Go at your own depth.
-              </Text>
-              <View style={styles.sprintControls}>
-                <Pill label="15 min" active={sprintMinutes === 15} onPress={() => handleSetSprintDuration(15)} />
-                <Pill label="20 min" active={sprintMinutes === 20} onPress={() => handleSetSprintDuration(20)} />
-                <IWButton voice="gray" small title={sprintRunning ? 'Stop timer' : 'Start timer'} onPress={toggleSprint} />
-              </View>
-              {(sprintRunning || sprintDisplay.startsWith('Time.')) && <Text style={styles.sprintTimer}>{sprintDisplay}</Text>}
-              {sprintRunning && sprintIdle && (
-                <Text style={styles.sprintNudge}>Keep the pen moving. Grammar and sense don't matter here.</Text>
-              )}
-              <TextInput
-                style={styles.page}
-                placeholder="Write continuously. Don't stop to fix anything."
-                placeholderTextColor={colors.fontMuted}
-                value={sprintText}
-                onChangeText={handleSprintInput}
-                multiline
-                textAlignVertical="top"
-              />
-              <Text style={styles.helpText}>
-                The research dose is 3 or 4 sprints on the same topic over a week or two. Keep it early or write past
-                the timer. Both are fine.
-              </Text>
-            </View>
-          )}
-
-          {/* ================== INKBLOT ================== */}
-          {mode === 'inkblot' && (
-            <View>
-              <Text style={styles.modeTitle}>Quick thought? Drop an InkBlot.</Text>
-              <Text style={styles.modeSubtitle}>A moment, a feeling, a passing thought. Seconds, not minutes.</Text>
-              {inkblotRecording ? (
-                <Text style={styles.listening}>
-                  {voicePartialText ? `"${voicePartialText}"` : 'Listening. Tap the microphone when you are done.'}
-                </Text>
-              ) : null}
-              <TextInput
-                style={[styles.page, styles.inkblotPage]}
-                placeholder="What's on your mind right now?"
-                placeholderTextColor={colors.fontMuted}
-                value={inkblotText}
-                onChangeText={setInkblotText}
-                multiline
-                textAlignVertical="top"
-                maxLength={500}
-              />
-              <TouchableOpacity onPress={() => setShowInkblotInfo(true)} style={styles.whyLink}>
-                <Text style={styles.quietLink}>Why quick capture works</Text>
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
 
         <InfoModal
           visible={showGratitudeInfo}
           onClose={() => setShowGratitudeInfo(false)}
           title="Why gratitude works"
-          subtitle="Five ways in, rotated so it stays fresh."
+          subtitle="Three small practices. Any one of them counts."
           footerText="Notice. Appreciate. Grow.">
           <InfoSection title="What the research shows">
             <InfoParagraph>
-              Writing down specific good things is linked with better mood, sleep and relationships. Variety matters:
-              doing the same list every day wears off, so Castalia rotates five practices and suggests one each day.
+              Writing down specific good things is linked with better mood, sleep and relationships. The same list every
+              day wears off. So each day, one practice opens first.
             </InfoParagraph>
           </InfoSection>
           <InfoDivider />
-          <InfoSection title="The five practices">
-            <InfoHighlightBox title="Three">Three specific good things. Specific beats general. (Emmons and McCullough, 2003)</InfoHighlightBox>
-            <InfoHighlightBox title="One, Deeply">One good thing, why it happened, and your part in it. (Seligman and others, 2005)</InfoHighlightBox>
-            <InfoHighlightBox title="Without It">Imagine life without something good. It renews its pull. (Koo and others, 2008)</InfoHighlightBox>
-            <InfoHighlightBox title="Letter">A letter to someone who helped you. Writing it carries the effect. (Seligman and others, 2005)</InfoHighlightBox>
-            <InfoHighlightBox title="Savor">One moment in full detail trains you to notice more of them. (Bryant and Veroff, 2007)</InfoHighlightBox>
-          </InfoSection>
-        </InfoModal>
-
-        <InfoModal
-          visible={showInkblotInfo}
-          onClose={() => setShowInkblotInfo(false)}
-          title="InkBlot: quick capture"
-          subtitle="Get it out of your head before it disappears."
-          footerText="Think it. Capture it. Let it go.">
-          <InfoSection title="Why quick capture helps">
-            <InfoParagraph>
-              Not every thought needs a full entry. Writing a passing thought down lets your mind stop holding it, and a
-              thirty-second InkBlot beats the perfect entry you never write.
-            </InfoParagraph>
-            <InfoParagraph>Type or speak up to 500 characters. Messy is fine. Incomplete is fine.</InfoParagraph>
+          <InfoSection title="The three practices">
+            <InfoHighlightBox title="Three good things">Three specific good things. Specific beats general. (Emmons and McCullough, 2003)</InfoHighlightBox>
+            <InfoHighlightBox title="One, deeply">
+              One good thing, why it happened, your part in it, and the details that made it good. (Seligman and others,
+              2005; Bryant and Veroff, 2007)
+            </InfoHighlightBox>
+            <InfoHighlightBox title="A letter">A letter to someone who helped you. Writing it carries the effect. (Seligman and others, 2005)</InfoHighlightBox>
           </InfoSection>
         </InfoModal>
       </ScrollView>
@@ -1742,13 +1431,24 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       {/* ─── Footer: a few quiet tools, and Keep ─── */}
       {status ? <Text style={styles.footStatus}>{status}</Text> : null}
       <View style={[styles.wfoot, {paddingBottom: Math.max(insets.bottom, spacing.md)}]}>
-        {(mode === 'free' || mode === 'inkblot') && (
+        {mode === 'free' && (
           <TouchableOpacity
-            style={[styles.tool, (isRecording || inkblotRecording) && styles.toolOn]}
-            onPress={mode === 'free' ? handleVoiceToggle : handleInkblotVoiceToggle}
+            style={[styles.tool, isRecording && styles.toolOn]}
+            onPress={handleVoiceToggle}
             accessibilityRole="button"
-            accessibilityLabel={isRecording || inkblotRecording ? 'Stop listening' : 'Speak it'}>
-            <MicIcon color={isRecording || inkblotRecording ? colors.fontWhite : colors.fontSecondary} />
+            accessibilityLabel={isRecording ? 'Stop listening' : 'Speak it'}>
+            <MicIcon color={isRecording ? colors.fontWhite : colors.fontSecondary} />
+          </TouchableOpacity>
+        )}
+        {mode === 'free' && (
+          <TouchableOpacity
+            style={[styles.tool, sprintRunning ? styles.toolOn : timerOpen && styles.toolActive]}
+            onPress={() => {
+              if (!sprintRunning) setTimerOpen(v => !v);
+            }}
+            accessibilityRole="button"
+            accessibilityLabel={sprintRunning ? `Timer running, ${sprintDisplay} left` : timerOpen ? 'Hide the timer' : 'Timed write'}>
+            <TimerIcon color={sprintRunning ? colors.fontWhite : colors.fontSecondary} />
           </TouchableOpacity>
         )}
         {mode === 'free' && (
@@ -1773,8 +1473,8 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
         <IWButton title="Keep this" onPress={keepHandler} loading={keepLoading} style={styles.keepBtn} />
       </View>
 
-      {/* Sprint idle cue: breathing teal edge frame. Gated to the sprint surface. */}
-      {mode === 'sprint' && sprintRunning && sprintIdle && (
+      {/* Timed write idle cue: breathing teal edge frame, only while the timer runs. */}
+      {mode === 'free' && sprintRunning && sprintIdle && (
         <Animated.View
           pointerEvents="none"
           style={[styles.sprintBreathFrame, {opacity: sprintBreath.interpolate({inputRange: [0, 1], outputRange: [0.15, 0.9]})}]}
@@ -1937,9 +1637,6 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       padding: spacing.lg,
       paddingBottom: spacing.sm,
     },
-    inkblotInput: {
-      minHeight: 160,
-    },
     sheetFoot: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -1980,74 +1677,6 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       fontStyle: 'italic',
     },
 
-    // ── Insights card (Plus voice analysis) ──
-    insightsCard: {
-      marginBottom: spacing.lg,
-    },
-    insightsTitle: {
-      fontFamily: fontFamily.bodyBold,
-      fontSize: 13,
-      color: colors.brandPrimary,
-      letterSpacing: 1.8,
-      textTransform: 'uppercase',
-      marginBottom: spacing.sm,
-    },
-    insightsRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    insightsChip: {
-      backgroundColor: colors.infoBg,
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.sm,
-      borderRadius: borderRadius.md,
-      minWidth: 80,
-    },
-    insightsLabel: {
-      fontFamily: fontFamily.body,
-      fontSize: 13,
-      color: colors.fontSecondary,
-      marginBottom: 2,
-    },
-    insightsValue: {
-      fontFamily: fontFamily.button,
-      fontSize: 15,
-      color: colors.fontMain,
-      textTransform: 'capitalize',
-    },
-    voiceNote: {
-      backgroundColor: colors.sophyTint,
-      borderColor: colors.sophyBorder,
-      borderWidth: 1,
-      borderRadius: borderRadius.lg,
-      padding: spacing.md,
-      gap: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    voiceNoteText: {fontFamily: fontFamily.serif, fontSize: 16, lineHeight: 24, color: colors.fontMain},
-    keepNoteRow: {flexDirection: 'row', alignItems: 'center', gap: spacing.sm, minHeight: 44},
-    keepNoteBox: {
-      width: 22,
-      height: 22,
-      borderRadius: 6,
-      borderWidth: 1.5,
-      borderColor: colors.sophyBorder,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    keepNoteBoxOn: {backgroundColor: colors.sophyAccent, borderColor: colors.sophyAccent},
-    keepNoteText: {fontFamily: fontFamily.body, fontSize: 15, color: colors.fontMain, flex: 1},
-    insightsDismiss: {
-      alignSelf: 'flex-end',
-      padding: spacing.xs,
-    },
-    insightsDismissText: {
-      fontFamily: fontFamily.body,
-      fontSize: 13,
-      color: colors.fontSecondary,
-    },
 
     reflectionBlock: {
       marginBottom: spacing.sm,
@@ -2258,7 +1887,7 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       marginTop: spacing.base,
     },
 
-    // ── Gratitude / InkBlot mode chrome ──
+    // ── Gratitude mode chrome ──
     modeTitle: {
       fontFamily: fontFamily.header,
       fontSize: fontSize.xl,
@@ -2332,20 +1961,6 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       minHeight: 140,
       textAlignVertical: 'top',
     },
-    gratPromptCard: {
-      backgroundColor: colors.bgCard,
-      borderLeftWidth: 4,
-      borderLeftColor: colors.brandPrimary,
-      borderRadius: borderRadius.md,
-      padding: spacing.base,
-      marginBottom: spacing.sm,
-    },
-    gratPromptText: {
-      fontFamily: fontFamily.serif,
-      fontSize: fontSize.md,
-      lineHeight: fontSize.md * 1.5,
-      color: colors.fontMain,
-    },
     gratRowButtons: {
       flexDirection: 'row',
       flexWrap: 'wrap',
@@ -2371,6 +1986,18 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       flexGrow: 2,
       minWidth: 140,
     },
+    gratName: {fontFamily: fontFamily.bodyBold, color: colors.fontMain},
+    tryAnother: {alignSelf: 'center', marginBottom: spacing.sm},
+    timerPanel: {
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      backgroundColor: colors.bgMuted,
+      borderRadius: borderRadius.lg,
+      padding: spacing.base,
+      marginBottom: spacing.lg,
+    },
+    timerRunRow: {flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between'},
+    timerTitle: {fontFamily: fontFamily.bodyBold, fontSize: 13, letterSpacing: 1.6, color: colors.brandPrimary, marginBottom: spacing.sm, textTransform: 'uppercase'},
     savorNudge: {
       fontFamily: fontFamily.serifItalic,
       fontStyle: 'italic',
@@ -2492,7 +2119,6 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       paddingHorizontal: 0,
       marginBottom: spacing.lg,
     },
-    inkblotPage: {minHeight: 180},
     quietLink: {fontFamily: fontFamily.body, fontSize: 15, color: colors.brandPrimary, paddingVertical: spacing.sm},
     whyLink: {alignSelf: 'center', marginTop: spacing.base},
     toolLabel: {fontFamily: fontFamily.bodyBold, fontSize: 15, color: colors.fontMain, marginBottom: spacing.sm},

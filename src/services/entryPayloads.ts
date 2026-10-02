@@ -183,6 +183,18 @@ export function sprintPayload(p: Base & {text: string; minutes: 15 | 20}) {
   return applyExtras(entry, p.extras);
 }
 
+/**
+ * Timed write (2.0 options pass): a free-write saved after the page's timer was started.
+ * It keeps Sprint's markers (practice 'sprint', the 'sprint' tag, sprintMinutes) so the
+ * Practice Summary and "what helps" still count it, on top of the free-write shape.
+ */
+export function markTimedWrite(entry: any, minutes: 15 | 20) {
+  entry.practice = 'sprint';
+  entry.sprintMinutes = minutes;
+  entry.tags = Array.from(new Set([...(entry.tags || []), 'sprint']));
+  return entry;
+}
+
 // ─── InkBlot (old handleSaveInkblot) ───
 export function inkblotPayload(p: Base & {text: string}) {
   const time = p.now.toLocaleTimeString('en-US', {hour: 'numeric', minute: '2-digit'});

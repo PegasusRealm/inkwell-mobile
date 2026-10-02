@@ -84,8 +84,8 @@ android {
         applicationId "com.inkwellmobile"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 88
-        versionName "26.274.1"
+        versionCode 89
+        versionName "26.274.2"
     }
     signingConfigs {
         debug {

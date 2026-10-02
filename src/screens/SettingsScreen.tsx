@@ -862,7 +862,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
 
     if (data.manifests.length > 0) {
       text += '═══════════════════════════════════════════\n';
-      text += '               GOALS (WISH)\n';
+      text += '               GOALS\n';
       text += '═══════════════════════════════════════════\n\n';
 
       data.manifests.forEach((manifest: any, index: number) => {

@@ -18,7 +18,7 @@ const SUPPORT_EMAIL = 'support@pegasusrealm.com';
 const TABS: Array<{name: string; text: string}> = [
   {
     name: 'Today',
-    text: 'Where you write. One question to start from, and a few ways in: free-write, sprint, gratitude, reframe, or just speak it.',
+    text: 'Where you write. One question to start from, then just write or speak it. A timer is there if you want one, and gratitude and reframe are a tap away.',
   },
   {
     name: 'Entries',
@@ -26,7 +26,7 @@ const TABS: Array<{name: string; text: string}> = [
   },
   {
     name: 'Goals',
-    text: "Your WISH: Want, Imagine, Snags, How. When you're ready for a new one, find your next goal here.",
+    text: "One goal at a time, in four steps: Want, Imagine, Snags, How. Not sure what you want yet? Start from your values.",
   },
   {
     name: 'You',

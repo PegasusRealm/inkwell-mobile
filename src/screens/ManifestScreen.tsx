@@ -1,13 +1,14 @@
 /**
  * Goals tab (route key 'Goals'; file name kept). v2.0 re-skin, 2026-10-01.
  *
- * With a WISH:   Your WISH summary (Want, runway, How, Edit)
- *                -> Find your next goal (ValuesPlanner + Sophy seed)
- *                -> quiet "Time for a new WISH" row (clears it, after a confirm).
- * Without one:   Find your next goal -> the WISH builder.
- * The builder (Want / Imagine / Snags / How, Sophy refine in coral) shows only
- * while editing or when there is no WISH yet. While the planner runs, the WISH
- * waits (web vpSetWishVisible parity).
+ * Options pass (Adam, 2026-10-01): one name ("your goal"), one start, one Sophy check.
+ * With a goal:   Your goal (Want, runway, How, Edit)
+ *                -> quiet "Done with this one? Start a new goal." (clears it, after a confirm).
+ * Without one:   Start a goal: "Do you know what you want?"
+ *                  Yes      -> the four steps (Want / Imagine / Snags / How)
+ *                  Not sure -> the values planner, which hands its pick to the Want.
+ * The builder ends with one "Check my plan with Sophy" (the whole plan, not each step).
+ * WISH (the four steps' initials) is named once, in "Why this works". Data keys are unchanged.
  *
  * Data is untouched by the re-skin: manifests/{uid} and the AsyncStorage keys
  * manifest_ / wishStart_ / wishTimeline_ are read and written exactly as
@@ -34,13 +35,12 @@ import auth from '@react-native-firebase/auth';
 import {useFocusEffect} from '@react-navigation/native';
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
-import {refineManifest} from '../services/sophyApi';
-import {plannerAssistFetch} from '../services/plannerApi';
+import {checkGoalPlan} from '../services/sophyApi';
 import ValuesPlanner from '../components/ValuesPlanner';
 import {IdentityBar, ScreenTitle} from '../components/IdentityBar';
 import {Card, IWButton, Pill, Eyebrow, Divider} from '../components/kit';
-import {ChevronRightIcon} from '../components/kit/icons';
 import {CoachHint} from '../components/FirstStepsCard';
+import InfoModal, {InfoParagraph, InfoHighlightBox, InfoSection} from '../components/InfoModal';
 import {FirstStepsService} from '../services/firstStepsService';
 import type {TabScreenProps} from '../navigation/types';
 import {iPadContentStyle, getKeyboardVerticalOffset} from '../utils/iPad';
@@ -127,19 +127,21 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     editingRef.current = editing;
   }, [editing]);
 
-  const [suggestions, setSuggestions] = useState<WishTexts>(EMPTY_WISH);
-  const [loadingSection, setLoadingSection] = useState<WishSection | null>(null);
+  // One Sophy check on the whole plan (replaces the four per-step buttons)
+  const [planCheck, setPlanCheck] = useState('');
+  const [checkingPlan, setCheckingPlan] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState('');
+  const [showWhy, setShowWhy] = useState(false);
 
-  // Planner card state
-  const [seedOutput, setSeedOutput] = useState('');
-  const [seeding, setSeeding] = useState(false);
+  // Start a goal: null = the question; 'know' = the four steps
+  const [startPath, setStartPath] = useState<'know' | null>(null);
+
+  // Planner state
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [plannerResumeNote, setPlannerResumeNote] = useState('');
 
   const hasWish = hasAnyText(savedWish);
-  const showBuilder = !hasWish || editing;
 
   // Resume note (web vpResumeNote parity), refreshed on mount AND on planner close
   const loadResumeNote = useCallback(async () => {
@@ -152,7 +154,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
       if (saved.done) {
         setPlannerResumeNote('Last time you chose "' + (saved.chosen || '') + '". Walk it again anytime.');
       } else if (saved.stage !== 'values' || (saved.selected || []).length > 0) {
-        setPlannerResumeNote('You have one in progress. Tap above to pick up where you left off.');
+        setPlannerResumeNote('You have one in progress. "Not sure yet" picks up where you left off.');
       }
     } catch (e) {
       console.warn('planner resume note load failed:', e);
@@ -184,9 +186,10 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     const takeIt = () => {
       setWishText('want', chosen);
       if (hasWish) setEditing(true);
+      else setStartPath('know');
     };
     if (wishTexts.want.trim()) {
-      Alert.alert('Replace your Want?', 'Your WISH already has a Want. Replace it with "' + chosen + '"?', [
+      Alert.alert('Replace your Want?', 'Your goal already has a Want. Replace it with "' + chosen + '"?', [
         {text: 'Keep current', style: 'cancel'},
         {text: 'Replace', onPress: takeIt},
       ]);
@@ -302,56 +305,27 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
   // Small minimum fill so day 1 never reads as an empty bar
   const fillPercent = Math.max((shownDay / wishTimeline) * 100, 4);
 
-  // ── Sophy planner quick-seed (web plannerQuickSeed parity) ──
-  const handleQuickSeed = async () => {
-    setSeeding(true);
-    setSeedOutput('Sophy is reading your journal...');
-    try {
-      const currentUser = auth().currentUser;
-      if (!currentUser) throw new Error('Sign in required');
-      // Web sends the values-planner state (vision + top values) when present
-      let vision = '';
-      let topValues: string[] = [];
-      try {
-        const userDoc = await firestore().collection('users').doc(currentUser.uid).get();
-        const vp = userDoc.data()?.valuesPlanner;
-        if (vp) {
-          vision = vp.vision || '';
-          topValues = Array.isArray(vp.ranked) ? vp.ranked.slice(0, 10) : [];
-        }
-      } catch (e) {
-        console.warn('planner state load failed, seeding without it:', e);
-      }
-      const text = await plannerAssistFetch('seed', {vision, topValues});
-      setSeedOutput(text);
-    } catch (e: any) {
-      setSeedOutput(e.message || 'Sophy is unavailable right now.');
-    } finally {
-      setSeeding(false);
-    }
-  };
-
-  const handleRefine = async (key: WishSection, heading: string) => {
-    if (!wishTexts[key].trim()) {
-      Alert.alert('Nothing to reflect on yet', `Write your ${heading} first.`);
+  // One Sophy check on the whole plan. Free, like the rest of Goals (never a paywall gate).
+  const handleCheckPlan = async () => {
+    if (!hasAnyText(wishTexts)) {
+      Alert.alert('Nothing to check yet', 'Write at least your Want first.');
       return;
     }
-    setLoadingSection(key);
-    setSuggestions(prev => ({...prev, [key]: ''}));
+    setCheckingPlan(true);
+    setPlanCheck('');
     try {
-      const suggestion = await refineManifest(key, wishTexts[key]);
-      setSuggestions(prev => ({...prev, [key]: suggestion}));
+      setPlanCheck(await checkGoalPlan(wishTexts));
     } catch (error) {
-      console.error(`Error refining ${heading}:`, error);
-      setSuggestions(prev => ({...prev, [key]: 'Something went wrong. Please try again.'}));
+      console.error('Error checking the plan:', error);
+      setPlanCheck('Sophy could not check it right now. Please try again.');
     } finally {
-      setLoadingSection(null);
+      setCheckingPlan(false);
     }
   };
 
   const startEditing = () => {
     setWishTexts(savedWish ?? EMPTY_WISH);
-    setSuggestions(EMPTY_WISH);
+    setPlanCheck('');
     setSaveStatus('');
     setEditing(true);
     scrollToTop();
@@ -361,8 +335,9 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     const base = savedWish ?? EMPTY_WISH;
     const close = () => {
       setWishTexts(base);
-      setSuggestions(EMPTY_WISH);
+      setPlanCheck('');
       setEditing(false);
+      if (!hasWish) setStartPath(null);
       scrollToTop();
     };
     const dirty = WISH_KEYS.some(k => wishTexts[k] !== base[k]);
@@ -370,7 +345,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
       close();
       return;
     }
-    Alert.alert('Discard your changes?', 'Your edits to this WISH will not be saved.', [
+    Alert.alert('Discard your changes?', 'Your edits to this goal will not be saved.', [
       {text: 'Keep editing', style: 'cancel'},
       {text: 'Discard', style: 'destructive', onPress: close},
     ]);
@@ -379,7 +354,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
   const handleSave = async () => {
     const {want, imagine, snags, how} = wishTexts;
     if (!want.trim() && !imagine.trim() && !snags.trim() && !how.trim()) {
-      Alert.alert('Your WISH is empty', 'Fill in at least one part first.');
+      Alert.alert('Your goal is empty', 'Fill in at least one part first.');
       return;
     }
 
@@ -387,7 +362,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     try {
       const currentUser = auth().currentUser;
       if (!currentUser) {
-        Alert.alert('Not signed in', 'Sign in to save your WISH.');
+        Alert.alert('Not signed in', 'Sign in to save your goal.');
         return;
       }
 
@@ -425,15 +400,16 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
 
       // Back to the calm summary
       setSavedWish({want, imagine, snags, how});
-      setSuggestions(EMPTY_WISH);
+      setPlanCheck('');
       setEditing(false);
+      setStartPath(null);
       scrollToTop();
 
       setSaveStatus("Saved. You're building something meaningful.");
       setTimeout(() => setSaveStatus(''), 4000);
       FirstStepsService.complete('wish');
     } catch (error) {
-      Alert.alert('Not saved', 'Your WISH did not save. Please try again.');
+      Alert.alert('Not saved', 'Your goal did not save. Please try again.');
     } finally {
       setSaving(false);
     }
@@ -441,8 +417,8 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
 
   const handleClearWish = () => {
     Alert.alert(
-      'Start a new WISH?',
-      "This clears your current WISH and resets its runway. It can't be undone.",
+      'Start a new goal?',
+      "This clears your current goal and resets its day count. It can't be undone.",
       [
         {text: 'Keep it', style: 'cancel'},
         {
@@ -462,8 +438,9 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
 
               setWishTexts(EMPTY_WISH);
               setSavedWish(null);
-              setSuggestions(EMPTY_WISH);
+              setPlanCheck('');
               setEditing(false);
+              setStartPath(null);
               setSaveStatus('');
               setWishStartDate(null);
               setWishTimeline(60);
@@ -471,7 +448,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
               scrollToTop();
             } catch (error) {
               console.error('Error clearing WISH:', error);
-              Alert.alert('Not cleared', 'Your WISH could not be cleared. Please try again.');
+              Alert.alert('Not cleared', 'Your goal could not be cleared. Please try again.');
             }
           },
         },
@@ -494,7 +471,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     const how = savedWish.how.trim();
     return (
       <Card style={[styles.sectionCard, styles.wishCard]}>
-        <Eyebrow style={styles.eyebrow}>Your WISH</Eyebrow>
+        <Eyebrow style={styles.eyebrow}>Your goal</Eyebrow>
 
         {want ? (
           <Text style={styles.want} numberOfLines={4}>
@@ -508,7 +485,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
           <View>
             <View style={styles.runwayRow}>
               <Text style={styles.runwayText}>{`Day ${shownDay} of ${wishTimeline}`}</Text>
-              {runwayDone ? <Text style={styles.runwayText}>Runway complete</Text> : null}
+              {runwayDone ? <Text style={styles.runwayText}>You made it.</Text> : null}
             </View>
             <View
               style={styles.runwayTrack}
@@ -536,49 +513,37 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     );
   };
 
-  // LAW: FREE-tier flows only in this card, never a paywall gate.
-  const renderFindCard = () => (
+  // LAW: FREE-tier flows only on this tab, never a paywall gate.
+  const renderStartCard = () => (
+    <Card style={styles.sectionCard}>
+      <Eyebrow style={styles.eyebrow}>Start a goal</Eyebrow>
+      <Text style={styles.startQuestion} accessibilityRole="header">
+        Do you know what you want?
+      </Text>
+      <View style={styles.startButtons}>
+        <IWButton title="Yes, I know" onPress={() => setStartPath('know')} style={styles.startButton} />
+        <IWButton voice="gray" title="Not sure yet" onPress={openPlanner} style={styles.startButton} />
+      </View>
+      <Text style={styles.findLine}>
+        Not sure? Start from what matters to you. You'll finish with one goal to try.
+      </Text>
+      {plannerResumeNote ? <Text style={styles.resumeNote}>{plannerResumeNote}</Text> : null}
+    </Card>
+  );
+
+  const renderPlannerCard = () => (
     <>
-      <CoachHint markId="planner" text="Ready for a new goal? Start here." />
+      <CoachHint markId="planner" text="Take your time. It saves as you go." />
       <Card style={styles.sectionCard}>
-        {!plannerOpen ? (
-          <>
-            <Pressable
-              onPress={openPlanner}
-              accessibilityRole="button"
-              accessibilityLabel="Find your next goal"
-              style={({pressed}) => [styles.findRow, pressed && styles.pressed]}>
-              <View style={styles.findText}>
-                <Text style={styles.findTitle}>Find your next goal</Text>
-                <Text style={styles.findLine}>
-                  Sort your values, picture a day 15 years out, then pick one move.
-                </Text>
-              </View>
-              <ChevronRightIcon color={colors.fontMuted} />
-            </Pressable>
-            {plannerResumeNote ? <Text style={styles.resumeNote}>{plannerResumeNote}</Text> : null}
-            <IWButton
-              voice="sophy"
-              title="Ask Sophy for ideas"
-              onPress={handleQuickSeed}
-              loading={seeding}
-              style={styles.seedButton}
-            />
-            {seedOutput ? renderSophyOutput(seedOutput) : null}
-          </>
-        ) : (
-          <ValuesPlanner onClose={handlePlannerClose} onHandoff={handlePlannerHandoff} />
-        )}
+        <ValuesPlanner onClose={handlePlannerClose} onHandoff={handlePlannerHandoff} />
       </Card>
     </>
   );
 
   const renderBuilder = () => (
     <Card style={styles.sectionCard}>
-      <Eyebrow style={styles.eyebrow}>{hasWish ? 'Edit your WISH' : 'New WISH'}</Eyebrow>
-      {!hasWish ? (
-        <Text style={styles.builderIntro}>Already know what you want? Build it here.</Text>
-      ) : null}
+      <Eyebrow style={styles.eyebrow}>{hasWish ? 'Edit your goal' : 'Your goal'}</Eyebrow>
+      <Text style={styles.builderIntro}>Four steps. Write them in your own words.</Text>
 
       {WISH_SECTIONS.map((section, index) => (
         <View key={section.key}>
@@ -595,17 +560,18 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
             accessibilityLabel={section.heading}
           />
           {section.tip ? <Text style={styles.tipText}>{section.tip}</Text> : null}
-          <IWButton
-            voice="sophy"
-            title="Reflect with Sophy"
-            onPress={() => handleRefine(section.key, section.heading)}
-            loading={loadingSection === section.key}
-            disabled={loadingSection !== null && loadingSection !== section.key}
-            style={styles.reflectButton}
-          />
-          {suggestions[section.key] ? renderSophyOutput(suggestions[section.key]) : null}
         </View>
       ))}
+
+      <Divider />
+      <IWButton
+        voice="sophy"
+        title={checkingPlan ? 'Sophy is reading...' : 'Check my plan with Sophy'}
+        onPress={handleCheckPlan}
+        loading={checkingPlan}
+        style={styles.reflectButton}
+      />
+      {planCheck ? renderSophyOutput(planCheck) : null}
 
       {/* Timeline is chosen once, before the first save (unchanged behavior) */}
       {!wishStartDate ? (
@@ -628,43 +594,36 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
       <Divider />
 
       <View style={styles.actionRow}>
-        <IWButton title="Save my WISH" onPress={handleSave} loading={saving} style={styles.actionButton} />
-        {hasWish ? (
-          <IWButton voice="gray" title="Cancel" onPress={cancelEditing} style={styles.actionButton} />
-        ) : null}
+        <IWButton title="Save my goal" onPress={handleSave} loading={saving} style={styles.actionButton} />
+        <IWButton voice="gray" title="Cancel" onPress={cancelEditing} style={styles.actionButton} />
       </View>
+      <Pressable onPress={() => setShowWhy(true)} style={styles.whyLink} accessibilityRole="button">
+        <Text style={styles.whyText}>Why this works</Text>
+      </Pressable>
     </Card>
   );
 
-  const renderNewWishRow = () => (
+  const renderNewGoalRow = () => (
     <Pressable
       onPress={handleClearWish}
       accessibilityRole="button"
-      accessibilityLabel="Time for a new WISH. Clears this one so you can start fresh."
+      accessibilityLabel="Done with this one? Start a new goal. This clears your goal and its day count."
       style={({pressed}) => [styles.quietRow, pressed && styles.pressed]}>
-      <Text style={styles.quietRowTitle}>Time for a new WISH</Text>
-      <Text style={styles.quietRowLine}>Clears this one so you can start fresh.</Text>
+      <Text style={styles.quietRowTitle}>Done with this one? Start a new goal.</Text>
+      <Text style={styles.quietRowLine}>This clears your goal and its day count.</Text>
     </Pressable>
   );
 
   const renderBody = () => {
     if (!wishLoaded) return null;
-    // The WISH waits while the planner runs; quitting should be a choice, not a drift
-    if (plannerOpen) return renderFindCard();
-    if (!hasWish) {
-      return (
-        <>
-          {renderFindCard()}
-          {renderBuilder()}
-        </>
-      );
-    }
+    // The goal waits while the planner runs; quitting should be a choice, not a drift
+    if (plannerOpen) return renderPlannerCard();
+    if (!hasWish) return startPath === 'know' || hasAnyText(wishTexts) ? renderBuilder() : renderStartCard();
     if (editing) return renderBuilder();
     return (
       <>
         {renderWishSummary()}
-        {renderFindCard()}
-        {renderNewWishRow()}
+        {renderNewGoalRow()}
       </>
     );
   };
@@ -686,6 +645,23 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
           {renderBody()}
         </View>
       </ScrollView>
+      <InfoModal
+        visible={showWhy}
+        onClose={() => setShowWhy(false)}
+        title="Why four steps work"
+        subtitle="Want, Imagine, Snags, How. Some people call it WISH."
+        footerText="Name it. See it. Plan for the snag.">
+        <InfoSection title="What the research shows">
+          <InfoParagraph>
+            Picturing the result alone can feel good and change little. Pairing it with an honest look at what gets in the
+            way, then a plan for that moment, is what moves people. (Oettingen, 2014)
+          </InfoParagraph>
+          <InfoHighlightBox title="If-then plans">
+            Deciding ahead of time what you will do when the snag shows up makes follow-through much more likely.
+            (Gollwitzer and Sheeran, 2006)
+          </InfoHighlightBox>
+        </InfoSection>
+      </InfoModal>
     </KeyboardAvoidingView>
   );
 };
@@ -776,21 +752,7 @@ const createStyles = (colors: ThemeColors) =>
       textAlign: 'center',
     },
 
-    // ── Find your next goal ──
-    findRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: spacing.md,
-    },
-    findText: {
-      flex: 1,
-    },
-    findTitle: {
-      fontFamily: fontFamily.bodyBold,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
-      marginBottom: spacing.xs,
-    },
+    // ── Start a goal ──
     findLine: {
       fontFamily: fontFamily.body,
       fontSize: fontSize.base,
@@ -804,9 +766,34 @@ const createStyles = (colors: ThemeColors) =>
       color: colors.fontMuted,
       marginTop: spacing.md,
     },
-    seedButton: {
-      alignSelf: 'flex-start',
+    startQuestion: {
+      fontFamily: fontFamily.header,
+      fontSize: 24,
+      lineHeight: 30,
+      color: colors.fontMain,
+      marginTop: spacing.sm,
+      marginBottom: spacing.base,
+    },
+    startButtons: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
+      marginBottom: spacing.base,
+    },
+    startButton: {
+      minWidth: 140,
+    },
+    whyLink: {
+      alignSelf: 'center',
       marginTop: spacing.base,
+      paddingVertical: spacing.sm,
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    whyText: {
+      fontFamily: fontFamily.body,
+      fontSize: fontSize.base,
+      color: colors.brandPrimary,
     },
 
     // ── Sophy output (her words, her surface) ──
@@ -897,7 +884,7 @@ const createStyles = (colors: ThemeColors) =>
       minWidth: 150,
     },
 
-    // ── Quiet "Time for a new WISH" row ──
+    // ── Quiet "Start a new goal" row ──
     quietRow: {
       paddingVertical: spacing.md,
       paddingHorizontal: 2,

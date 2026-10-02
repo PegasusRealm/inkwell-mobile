@@ -52,7 +52,7 @@ const VP_LABELS: Record<VpStage, string> = {
   vision: 'Step 3 of 6, A day in your life, 15 years from now',
   brainstorm: 'Step 4 of 6, Brainstorm',
   evaluate: 'Step 5 of 6, Choose one',
-  handoff: 'Step 6 of 6, Into your WISH',
+  handoff: 'Step 6 of 6, Into your goal',
 };
 
 const vpDefault = (): VpState => ({
@@ -459,7 +459,7 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
       : vp?.stage === 'brainstorm'
       ? 'Save list & continue'
       : vp?.stage === 'handoff'
-      ? 'Send to my WISH'
+      ? 'Make it my goal'
       : 'Continue';
 
   const backHidden = vp?.stage === 'values' && vp.round === 1;
@@ -494,14 +494,12 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
           <Text style={styles.gateText}>
             You walked the planner {ago}. Your top values were <Text style={styles.gateBold}>{topVals}</Text> and
             you chose <Text style={styles.gateBold}>{vp.chosen}</Text>. Values usually shift with seasons of life,
-            not weeks. If something big changed, walk it again. If the goal is just fighting you, it might need
-            attention, not replacement.
+            not weeks. If something big changed, walk it again.
           </Text>
         ) : (
           <Text style={styles.gateText}>
             It has been {ago} since your last walk. Your top values were{' '}
-            <Text style={styles.gateBold}>{topVals}</Text>. Seasons change; a fresh walk is timely. Your old run
-            stays archived either way.
+            <Text style={styles.gateBold}>{topVals}</Text>. Seasons change. A fresh walk is a good idea.
           </Text>
         )}
         <View style={styles.gateButtons}>
@@ -511,7 +509,17 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
             title={days < 90 ? 'Something big changed, start fresh' : 'Start a fresh walk'}
             onPress={handleRestartFresh}
           />
-          <IWButton small title="Keep what I have" onPress={onClose} />
+          {vp.chosen ? (
+            <IWButton
+              small
+              title={days < 90 ? 'Use it again' : `Use "${vp.chosen.length > 28 ? vp.chosen.slice(0, 27).trim() + '…' : vp.chosen}" again`}
+              onPress={() => {
+                onHandoff(vp.chosen);
+                onClose();
+              }}
+            />
+          ) : null}
+          <IWButton voice="gray" small title="Not now" onPress={onClose} />
         </View>
       </View>
     );
@@ -727,7 +735,7 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
       {/* ═══ Step 6: handoff ═══ */}
       {vp.stage === 'handoff' && (
         <View>
-          <Text style={styles.intro}>Pick the one that survived. It becomes the Want of your WISH below.</Text>
+          <Text style={styles.intro}>Pick the one that survived. It becomes your goal.</Text>
           {vp.top3.map(idea => (
             <TouchableOpacity
               key={idea}

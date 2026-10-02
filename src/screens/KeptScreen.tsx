@@ -4,6 +4,8 @@
  * answer measures the writing and not Sophy's reply. Sophy only appears when asked,
  * because a reflection nobody asked for after a hard entry reads as being analyzed.
  * Skipped after-ratings are recorded (feelAfterSkipped) so "what helps" stays honest later.
+ * Options pass (2026-10-01): the Plus voice read (tone, energy, Sophy's note) moved here from
+ * the middle of writing. Same rule as the reflection: it opens only when asked.
  */
 import React, {useEffect, useMemo, useRef, useState} from 'react';
 import {View, Text, StyleSheet, TouchableOpacity, ScrollView, Alert} from 'react-native';
@@ -25,13 +27,17 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
   const {colors} = useTheme();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const {entryId, text, mode, words, minutes, hadFeelBefore, firstSave, stillOpen} = route.params;
+  const {entryId, text, mode, words, minutes, hadFeelBefore, firstSave, stillOpen, voiceRead, timed} = route.params;
   const {hasFeatureAccess, checkFeatureAndShowPaywall, showPaywall, closePaywall} = useSubscription();
 
   const [feelAfter, setFeelAfter] = useState(0);
   const [reflection, setReflection] = useState('');
   const [asking, setAsking] = useState(false);
   const [keptReflection, setKeptReflection] = useState(false);
+  const [voiceOpen, setVoiceOpen] = useState(false);
+  const [keptVoice, setKeptVoice] = useState(false);
+  // What they chose to keep, set before the write so two quick keeps never drop each other
+  const keptRef = useRef({voice: false, refl: false});
   const [note, setNote] = useState('');
   const doc = () => firestore().collection('journalEntries').doc(entryId);
   const closing = useRef(false);
@@ -87,12 +93,33 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
     }
   };
 
+  // Both Sophy notes write the one field Entries shows in coral (reflectionUsed), so keeping
+  // one never erases the other: the kept ones are joined, voice note first.
+  const writeKept = () =>
+    doc().update({
+      reflectionUsed: [keptRef.current.voice ? voiceRead?.note : '', keptRef.current.refl ? reflection : '']
+        .filter(Boolean)
+        .join('\n\n'),
+    });
+
   const keepReflection = async () => {
+    keptRef.current.refl = true;
     try {
-      // Same field the old "Save this Reflection" checkbox wrote; Entries shows it in coral.
-      await doc().update({reflectionUsed: reflection});
+      await writeKept();
       setKeptReflection(true);
     } catch {
+      keptRef.current.refl = false;
+      setNote("Couldn't add it. Try again.");
+    }
+  };
+
+  const keepVoiceNote = async () => {
+    keptRef.current.voice = true;
+    try {
+      await writeKept();
+      setKeptVoice(true);
+    } catch {
+      keptRef.current.voice = false;
       setNote("Couldn't add it. Try again.");
     }
   };
@@ -104,10 +131,14 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
     else navigation.navigate('MainTabs', {screen: 'Today'});
   };
 
+  const wordsText = `${words} ${words === 1 ? 'word' : 'words'}`;
   const summary =
     mode === 'gratitude'
       ? 'Kept.'
-      : `Kept. ${words} ${words === 1 ? 'word' : 'words'}, ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+      : timed
+      ? `Kept. A timed write, ${wordsText}.`
+      : `Kept. ${wordsText}, ${minutes} ${minutes === 1 ? 'minute' : 'minutes'}.`;
+
 
   return (
     <View style={styles.backdrop}>
@@ -123,7 +154,33 @@ const KeptScreen: React.FC<RootStackScreenProps<'Kept'>> = ({navigation, route})
           {stillOpen ? <Text style={styles.first}>{`Your words in ${stillOpen} are still open.`}</Text> : null}
           {firstSave ? <Text style={styles.first}>Your first entry is kept. It's private, and it's here whenever you want it.</Text> : null}
 
-          <FeelCheck question="How heavy is it now?" selected={feelAfter} onTap={onFeel} colors={colors} />
+          <FeelCheck question="How heavy is it now? (optional)" selected={feelAfter} onTap={onFeel} colors={colors} />
+
+          {/* Plus voice read: offered, never pushed */}
+          {/* Sophy's sentence only: an AI naming someone's tone reads as being assessed (Phil) */}
+          {voiceRead?.note ? (
+            !voiceOpen ? (
+              <TouchableOpacity style={styles.hear} onPress={() => setVoiceOpen(true)} accessibilityRole="button">
+                <SophyOrb size={22} />
+                <Text style={styles.hearText}>What Sophy heard in your voice</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.refl}>
+                <View style={styles.reflTop}>
+                  <SophyOrb size={22} />
+                  <Text style={styles.reflWho}>WHAT SOPHY HEARD</Text>
+                </View>
+                <Text style={styles.reflText}>{voiceRead.note}</Text>
+                {keptVoice ? (
+                  <Text style={styles.reflKept}>Added to this entry.</Text>
+                ) : (
+                  <View style={styles.reflActs}>
+                    <IWButton voice="sophy" small title="Keep it with this entry" onPress={keepVoiceNote} />
+                  </View>
+                )}
+              </View>
+            )
+          ) : null}
 
           {!reflection ? (
             <TouchableOpacity style={styles.hear} onPress={hearFromSophy} disabled={asking} accessibilityRole="button">

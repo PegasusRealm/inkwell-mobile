@@ -6,13 +6,22 @@ import type {CompositeScreenProps, NavigatorScreenParams} from '@react-navigatio
 import type {BottomTabScreenProps} from '@react-navigation/bottom-tabs';
 import type {StackScreenProps} from '@react-navigation/stack';
 
-/** The ways in. Every one of them opens inside Write. */
-export type WriteMode = 'free' | 'sprint' | 'gratitude' | 'reframe' | 'inkblot';
-export type GratPractice = 'three' | 'deep' | 'subtraction' | 'letter' | 'savor';
+/**
+ * The ways in. Every one of them opens inside Write. Options pass (Adam, 2026-10-01):
+ * Sprint is now a timer on the free-write page, InkBlot is retired, and gratitude has
+ * three practices (Savor folded into One, deeply; Without It retired).
+ */
+export type WriteMode = 'free' | 'gratitude' | 'reframe';
+export type GratPractice = 'three' | 'deep' | 'letter';
+
+/** Old links and notifications may still name a retired way in; they open the nearest one. */
+export const toWriteMode = (m?: string): WriteMode => (m === 'gratitude' || m === 'reframe' ? m : 'free');
+export const toGratPractice = (p?: string): GratPractice | undefined =>
+  p === 'three' || p === 'deep' || p === 'letter' ? p : p === 'savor' ? 'deep' : p === 'subtraction' ? 'three' : undefined;
 
 export type WriteParams = {
-  mode?: WriteMode;
-  gratPractice?: GratPractice;
+  mode?: WriteMode | string;
+  gratPractice?: GratPractice | string;
   /** A Sophy prompt chosen on Today, shown above the page and saved as promptUsed. */
   prompt?: string;
   /** Start listening as soon as Write opens (Today's "Speak it"). */
@@ -32,6 +41,10 @@ export type KeptParams = {
   firstSave?: boolean;
   /** Another way in Write still holds words (its label); Done goes back to it. */
   stillOpen?: string;
+  /** Plus voice read of a spoken entry, shown after keeping instead of mid-writing. */
+  voiceRead?: {tone?: string; energy?: string; note?: string};
+  /** The free-write page ran its timer (a timed write). */
+  timed?: boolean;
 };
 
 // Root stack (MainTabs accepts nested tab params so services can deep-navigate)

@@ -130,6 +130,32 @@ export async function transcribeVoice(
 }
 
 /**
+ * One Sophy check on the whole goal (options pass, 2026-10-01): replaces the four
+ * per-step "Reflect with Sophy" buttons. Same askSophy function and coaching rules:
+ * guidance only, never a rewrite.
+ */
+export async function checkGoalPlan(goal: {want: string; imagine: string; snags: string; how: string}): Promise<string> {
+  const part = (label: string, t: string) => `${label}: ${t.trim() || '(not written yet)'}`;
+  const prompt = `You are Sophy, a warm, plain-spoken coach. Someone wrote a goal in four steps. Look at the whole plan and coach them.
+
+What good looks like:
+- Want: one specific, personal goal they can act on in the next few weeks.
+- Imagine: the best result, in vivid, concrete, felt detail.
+- Snags: the inner obstacle most likely to get in the way (habits, moods, excuses), named specifically.
+- How: an if-then plan for that snag ("If [snag], then I will [action]"), simple and doable in daily life.
+
+${part('Want', goal.want)}
+${part('Imagine', goal.imagine)}
+${part('Snags', goal.snags)}
+${part('How', goal.how)}
+
+Reply in under 120 words, plain sentences, no headings or lists. Start with what is already strong. Then name the ONE change that would help this plan most, and why. If a step is empty, say which one to write next. Do not rewrite their words for them, and do not use stage directions.`;
+  const result = await callCloudFunction<{insight?: string; response?: string}>('askSophy', {entry: prompt});
+  const clean = (result.insight || result.response || '').replace(/\*[^*]*\*/g, '').trim();
+  return clean || 'Something went wrong.';
+}
+
+/**
  * Refine a WISH section with Sophy guidance using exact web app prompts
  * @param section - The WISH section (want, imagine, snags, how)
  * @param text - User's input for that section

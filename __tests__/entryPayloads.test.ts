@@ -13,6 +13,7 @@ import {
   gratitudePracticePayload,
   sprintPayload,
   inkblotPayload,
+  markTimedWrite,
   wordCount,
 } from '../src/services/entryPayloads';
 
@@ -168,5 +169,34 @@ describe('2.0 additions are additive only', () => {
   test('word count', () => {
     expect(wordCount('  one two   three ')).toBe(3);
     expect(wordCount('   ')).toBe(0);
+  });
+});
+
+describe('2.0 options pass: timed write', () => {
+  test('a timed free-write is the free-write shape plus the sprint markers', () => {
+    const base = freeWritePayload({
+      uid: UID,
+      ts: TS,
+      now: NOW,
+      text: 'Kept going',
+      tags: ['work'],
+      manifest: null,
+      extras: {practice: 'freewrite', tzOffsetMin: -600},
+    });
+    expect(markTimedWrite(base, 20)).toEqual({
+      text: 'Kept going',
+      userId: UID,
+      createdAt: TS,
+      updatedAt: TS,
+      tags: ['work', 'sprint'],
+      practice: 'sprint',
+      tzOffsetMin: -600,
+      sprintMinutes: 20,
+    });
+  });
+
+  test('no tags yet: the sprint tag is the only one, never doubled', () => {
+    const base = freeWritePayload({uid: UID, ts: TS, now: NOW, text: 'x', tags: [], manifest: null});
+    expect(markTimedWrite(markTimedWrite(base, 15), 15).tags).toEqual(['sprint']);
   });
 });

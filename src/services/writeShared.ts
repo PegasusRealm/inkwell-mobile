@@ -5,9 +5,10 @@ import type {GratPractice} from '../navigation/types';
 export const GRAT_DONE_KEY = 'gratDoneDate';
 export const todayKey = () => new Date().toISOString().slice(0, 10);
 
-// Same date rule as web: first Saturday = letter; Sun savor / Wed deep / Fri subtraction
+// Three practices (options pass, 2026-10-01): first Saturday of the month = letter;
+// Wednesday and Sunday = one, deeply; every other day = three good things.
 export const suggestedGratitudePractice = (): GratPractice => {
   const d = new Date();
   if (d.getDay() === 6 && d.getDate() <= 7) return 'letter';
-  return ({0: 'savor', 3: 'deep', 5: 'subtraction'} as Record<number, GratPractice>)[d.getDay()] || 'three';
+  return d.getDay() === 0 || d.getDay() === 3 ? 'deep' : 'three';
 };

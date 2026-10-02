@@ -19,10 +19,12 @@ import {Platform} from 'react-native';
 // 26.274.1 (2026-10-01): Castalia (formerly InkWell) 2.0 phone app (Today / Entries / Goals / You, full-screen Write,
 // Kept, heaviness ratings, Plus preview). Phone-only cut; web stays at its own version.
 // Builds 84/88: the Castalia rename and new icon (83/87 may already be on TestFlight or Play internal).
-export const APP_VERSION = '26.274.1';
+// 26.274.2, builds 85/89 (2026-10-01): options pass (Adam): three ways in, the timer on the page, three
+// gratitude practices, one-start goals, rename card. New feature state, so a new version string.
+export const APP_VERSION = '26.274.2';
 
 export const BUILD_NUMBER = Platform.select({
-  ios: '84',
-  android: '88',
+  ios: '85',
+  android: '89',
   default: '0',
 });
