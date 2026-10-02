@@ -61,11 +61,6 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.sm,
     borderBottomWidth: 1,
   },
-  wordmark: {
-    fontFamily: fontFamily.header,
-    fontSize: 20,
-    letterSpacing: 0.3,
-  },
   right: {
     flexDirection: 'row',
     alignItems: 'center',

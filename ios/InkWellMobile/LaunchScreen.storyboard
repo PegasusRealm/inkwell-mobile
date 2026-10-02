@@ -23,12 +23,9 @@
                                     <constraint firstAttribute="height" constant="88" id="Cm1-Ht-a03"/>
                                 </constraints>
                             </imageView>
-                            <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Castalia" textAlignment="center" lineBreakMode="middleTruncation" baselineAdjustment="alignBaselines" minimumFontSize="18" translatesAutoresizingMaskIntoConstraints="NO" id="GJd-Yh-RWb">
-                                <rect key="frame" x="0.0" y="302" width="375" height="43"/>
-                                <fontDescription key="fontDescription" name="Newsreader36pt-Regular" family="Newsreader 36pt" pointSize="42"/>
-                                <color key="textColor" red="0.08627450980" green="0.13725490196" blue="0.16470588235" alpha="1" colorSpace="custom" customColorSpace="sRGB"/>
-                                <nil key="highlightedColor"/>
-                            </label>
+                            <imageView clipsSubviews="YES" userInteractionEnabled="NO" contentMode="center" horizontalHuggingPriority="251" verticalHuggingPriority="251" image="LaunchWordmark" translatesAutoresizingMaskIntoConstraints="NO" id="GJd-Yh-RWb" userLabel="Castalia wordmark">
+                                <rect key="frame" x="0.0" y="302" width="375" height="42"/>
+                            </imageView>
                             <label opaque="NO" clipsSubviews="YES" userInteractionEnabled="NO" contentMode="left" horizontalHuggingPriority="251" verticalHuggingPriority="251" text="Journal &amp; Insight" textAlignment="center" lineBreakMode="tailTruncation" baselineAdjustment="alignBaselines" minimumFontSize="9" translatesAutoresizingMaskIntoConstraints="NO" id="MN2-I3-ftu">
                                 <rect key="frame" x="0.0" y="355" width="375" height="21"/>
                                 <fontDescription key="fontDescription" type="system" pointSize="16"/>
@@ -57,5 +54,6 @@
     </scenes>
     <resources>
         <image name="LaunchMark" width="88" height="88"/>
+        <image name="LaunchWordmark" width="153" height="42"/>
     </resources>
 </document>

@@ -1,5 +1,5 @@
 /**
- * TodayScreen (v2.0, 2026-10-01): where InkWell opens. One question, one button.
+ * TodayScreen (v2.0, 2026-10-01): where Castalia opens. One question, one button.
  * Ways in sit under it, Sophy waits until asked, and one memory comes back when there's
  * a kind one to bring back.
  *
@@ -8,6 +8,10 @@
  * "Another way to see it" line of a reframe, never the event or the painful read. Feeling
  * lighter after writing says nothing about the content, so it no longer qualifies.
  * It can be turned off in You > Your words ("Show past entries on Today").
+ *
+ * Rename card (Phil, 2026-10-01): people who had an account before the InkWell to Castalia
+ * rename see one card, once, saying it is the same journal. New accounts never see it.
+ * "Got it" or the X clears it for good (per account, on this device).
  */
 import React, {useCallback, useMemo, useState} from 'react';
 import {View, Text, ScrollView, TouchableOpacity, StyleSheet, useWindowDimensions, Alert} from 'react-native';
@@ -33,6 +37,9 @@ import type {TabScreenProps, WriteMode} from '../navigation/types';
 
 export const SHOW_MEMORIES_KEY = 'iw_show_memories';
 const MEMORY_HIDDEN_KEY = 'iw_memory_hidden_on';
+const RENAME_SEEN_PREFIX = 'castalia_rename_seen_';
+/** An account older than this when it first opens this build was made under the InkWell name. */
+const RENAME_MIN_ACCOUNT_AGE_MS = 24 * 3600 * 1000;
 
 // The question rotates by day so it never wears into wallpaper. [before, emphasized, after]
 const QUESTIONS: Array<[string, string, string]> = [
@@ -115,6 +122,31 @@ const TodayScreen: React.FC<TabScreenProps<'Today'>> = ({navigation}) => {
   const [memory, setMemory] = useState<Memory | null>(null);
   const [prompt, setPrompt] = useState('');
   const [asking, setAsking] = useState(false);
+  const [showRename, setShowRename] = useState(false);
+
+  const checkRename = useCallback(async () => {
+    try {
+      const user = auth().currentUser;
+      if (!user) return;
+      const key = RENAME_SEEN_PREFIX + user.uid;
+      if (await AsyncStorage.getItem(key)) return;
+      const created = user.metadata?.creationTime ? new Date(user.metadata.creationTime).getTime() : NaN;
+      if (!isNaN(created) && Date.now() - created > RENAME_MIN_ACCOUNT_AGE_MS) {
+        setShowRename(true);
+      } else {
+        // Joined as Castalia: nothing to explain, and never later either.
+        await AsyncStorage.setItem(key, 'new');
+      }
+    } catch (e: any) {
+      console.warn('Rename card skipped:', e?.message);
+    }
+  }, []);
+
+  const dismissRename = async () => {
+    setShowRename(false);
+    const user = auth().currentUser;
+    if (user) await AsyncStorage.setItem(RENAME_SEEN_PREFIX + user.uid, 'seen');
+  };
 
   const loadMemory = useCallback(async () => {
     try {
@@ -169,7 +201,8 @@ const TodayScreen: React.FC<TabScreenProps<'Today'>> = ({navigation}) => {
       setRefresh(n => n + 1);
       AsyncStorage.getItem(GRAT_DONE_KEY).then(v => setGratDoneToday(v === todayKey()));
       loadMemory();
-    }, [loadMemory]),
+      checkRename();
+    }, [loadMemory, checkRename]),
   );
 
   const openWrite = (mode: WriteMode, extra: Record<string, unknown> = {}) => {
@@ -219,6 +252,27 @@ const TodayScreen: React.FC<TabScreenProps<'Today'>> = ({navigation}) => {
       <IdentityBar refreshTrigger={refresh} />
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <View style={[styles.content, iPadContentStyle(screenWidth)]}>
+          {showRename ? (
+            <View style={styles.rename}>
+              <View style={styles.memoryTop}>
+                <Text style={styles.memoryLabel} accessibilityRole="header">NEW NAME, SAME JOURNAL</Text>
+                <TouchableOpacity
+                  onPress={dismissRename}
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss"
+                  hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+                  <CloseIcon size={15} color={colors.fontMuted} />
+                </TouchableOpacity>
+              </View>
+              <Text style={styles.memoryText}>
+                InkWell is now Castalia. Your entries, your goals, and Sophy are all here, just as you left them.
+              </Text>
+              <Text style={styles.memoryMeta}>Some emails and receipts may still say InkWell for a little while.</Text>
+              <View style={styles.renameAct}>
+                <IWButton small title="Got it" onPress={dismissRename} />
+              </View>
+            </View>
+          ) : null}
           <Text style={styles.date}>{dateLine}</Text>
           <Text style={styles.question} accessibilityRole="header">
             {q0}
@@ -351,6 +405,16 @@ const createStyles = (colors: ThemeColors) =>
       padding: spacing.base,
       gap: spacing.sm,
     },
+    rename: {
+      backgroundColor: colors.bgMuted,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      borderRadius: borderRadius.xl,
+      padding: spacing.base,
+      gap: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    renameAct: {flexDirection: 'row', justifyContent: 'flex-end', marginTop: spacing.xs},
     memoryTop: {flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center'},
     memoryLabel: {fontFamily: fontFamily.bodyBold, fontSize: 13, letterSpacing: 1.6, color: colors.brandPrimary},
     memoryText: {fontFamily: fontFamily.serif, fontSize: 17, lineHeight: 26, color: colors.fontMain},

@@ -1,5 +1,5 @@
 /**
- * InkWell Login Screen
+ * Castalia Login Screen
  * Handles email/password, Apple, and Google authentication
  */
 
@@ -15,7 +15,6 @@ import {
   ScrollView,
   Alert,
   ActivityIndicator,
-  Image,
   useWindowDimensions,
   Linking,
 } from 'react-native';
@@ -513,7 +512,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
 
         {/* Title */}
         <Text style={styles.title}>
-          {isSignUp ? 'Create Account' : 'Welcome Back'}
+          {isSignUp ? 'Create Account' : 'Welcome'}
         </Text>
         <Text style={styles.subtitle}>
           For the <Text style={styles.subtitleEm}>Thinkers</Text> and the{' '}
