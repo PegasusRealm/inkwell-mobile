@@ -10,7 +10,9 @@
  * It can be turned off in You > Your words ("Show past entries on Today").
  *
  * Rename card (Phil, 2026-10-01): people who had an account before the InkWell to Castalia
- * rename see one card, once, saying it is the same journal. New accounts never see it.
+ * rename see one card saying it is the same journal, until they clear it. Accounts made after
+ * RENAME_CUTOFF never see it, on any phone, so a Castalia-born account on a new phone isn't told
+ * about a name it never knew. Move the cutoff later only if 2.0 ships after it.
  * "Got it" or the X clears it for good (per account, on this device).
  */
 import React, {useCallback, useMemo, useState} from 'react';
@@ -38,7 +40,9 @@ import type {TabScreenProps, WriteMode} from '../navigation/types';
 export const SHOW_MEMORIES_KEY = 'iw_show_memories';
 const MEMORY_HIDDEN_KEY = 'iw_memory_hidden_on';
 const RENAME_SEEN_PREFIX = 'castalia_rename_seen_';
-/** An account older than this when it first opens this build was made under the InkWell name. */
+/** Accounts created after this were made under the Castalia name (set after the 2.0 release). */
+const RENAME_CUTOFF = Date.parse('2026-11-01T00:00:00-10:00');
+/** And an account must be at least this old at first open, so a same-day sign-up never sees it. */
 const RENAME_MIN_ACCOUNT_AGE_MS = 24 * 3600 * 1000;
 
 // The question rotates by day so it never wears into wallpaper. [before, emphasized, after]
@@ -131,7 +135,8 @@ const TodayScreen: React.FC<TabScreenProps<'Today'>> = ({navigation}) => {
       const key = RENAME_SEEN_PREFIX + user.uid;
       if (await AsyncStorage.getItem(key)) return;
       const created = user.metadata?.creationTime ? new Date(user.metadata.creationTime).getTime() : NaN;
-      if (!isNaN(created) && Date.now() - created > RENAME_MIN_ACCOUNT_AGE_MS) {
+      // created > 0: iOS reports a missing creation date as 1970.
+      if (!isNaN(created) && created > 0 && created < RENAME_CUTOFF && Date.now() - created > RENAME_MIN_ACCOUNT_AGE_MS) {
         setShowRename(true);
       } else {
         // Joined as Castalia: nothing to explain, and never later either.
@@ -267,7 +272,7 @@ const TodayScreen: React.FC<TabScreenProps<'Today'>> = ({navigation}) => {
               <Text style={styles.memoryText}>
                 InkWell is now Castalia. Your entries, your goals, and Sophy are all here, just as you left them.
               </Text>
-              <Text style={styles.memoryMeta}>Some emails and receipts may still say InkWell for a little while.</Text>
+              <Text style={styles.memoryMeta}>Some emails, texts, and receipts may still say InkWell for a little while.</Text>
               <View style={styles.renameAct}>
                 <IWButton small title="Got it" onPress={dismissRename} />
               </View>
