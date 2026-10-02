@@ -886,7 +886,7 @@ const createStyles = (colors: ThemeColors) =>
     },
     creditLine: {
       fontFamily: fontFamily.body,
-      fontSize: 10.5,
+      fontSize: 13,
       fontStyle: 'italic',
       color: colors.fontMuted,
       marginTop: spacing.sm,
@@ -940,7 +940,7 @@ const createStyles = (colors: ThemeColors) =>
     },
     sophyWho: {
       fontFamily: fontFamily.bodyBold,
-      fontSize: 10,
+      fontSize: 13,
       letterSpacing: 2,
       color: colors.sophyLight,
       marginBottom: 2,

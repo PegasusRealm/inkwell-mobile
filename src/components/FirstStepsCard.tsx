@@ -192,7 +192,7 @@ const createStyles = (colors: ThemeColors) =>
     },
     dotCheck: {
       color: colors.fontWhite,
-      fontSize: 10,
+      fontSize: 13,
       fontFamily: fontFamily.buttonBold,
     },
     label: {

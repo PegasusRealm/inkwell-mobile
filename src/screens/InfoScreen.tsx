@@ -1,312 +1,187 @@
+/**
+ * Help and About (v2.0, 2026-10-01). Opened from You as the 'Info' stack route;
+ * the navigator draws the "Help and About" header and the way back.
+ * Short on purpose: what InkWell is, the four tabs, Sophy, privacy, support.
+ * Type floor: nothing under 13px. Teal is structure, coral is Sophy's only.
+ */
 import React, {useMemo} from 'react';
-import {View, Text, StyleSheet, ScrollView, useWindowDimensions} from 'react-native';
-import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {View, Text, StyleSheet, ScrollView, Linking, useWindowDimensions} from 'react-native';
+import {spacing, fontFamily} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import {iPadContentStyle} from '../utils/iPad';
-// App version comes from the single source of truth (src/version.ts — M3 sync;
-// this file previously carried its own stale copy, 26.042.1)
 import {APP_VERSION, BUILD_NUMBER} from '../version';
+import {Eyebrow, SophyOrb} from '../components/kit';
+
+const SUPPORT_EMAIL = 'support@inkwelljournal.io';
+
+const TABS: Array<{name: string; text: string}> = [
+  {
+    name: 'Today',
+    text: 'Where you write. One question to start from, and a few ways in: free-write, sprint, gratitude, reframe, InkBlot, or just speak it.',
+  },
+  {
+    name: 'Entries',
+    text: 'Everything you have kept. Ask your journal in your own words, or open the calendar to find a day.',
+  },
+  {
+    name: 'Goals',
+    text: "Your WISH: Want, Imagine, Snags, How. When you're ready for a new one, find your next goal here.",
+  },
+  {
+    name: 'You',
+    text: 'Your look, reminders, Practice Summary, privacy and export, and your plan.',
+  },
+];
 
 export default function InfoScreen() {
-  // Theme hook for dynamic theming
   const {colors} = useTheme();
-  
-  // Dynamic dimensions for iPad
   const {width: screenWidth} = useWindowDimensions();
-  
-  // Create styles with current theme colors
   const styles = useMemo(() => createStyles(colors), [colors]);
 
-  const appVersion = APP_VERSION;
-  const buildNumber = BUILD_NUMBER;
-  
   return (
-    <ScrollView style={styles.container}>
-      <View style={iPadContentStyle(screenWidth)}>
-      {/* Welcome Section */}
-      <View style={styles.section}>
-        <Text style={styles.title}>Welcome to InkWell</Text>
-        <Text style={styles.body}>
-          InkWell is your personal journaling companion, designed to help you
-          reflect, manifest, and grow through the power of writing and AI-guided
-          insights.
-        </Text>
-      </View>
+    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+      <View style={[styles.inner, iPadContentStyle(screenWidth)]}>
+        {/* What InkWell is */}
+        <Text style={styles.lead}>A journal that remembers, reflects, and grows with you.</Text>
 
-      {/* Features Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Core Features</Text>
+        {/* The tabs */}
+        <View style={styles.section}>
+          <Eyebrow style={styles.eyebrow}>How the tabs work</Eyebrow>
+          {TABS.map(tab => (
+            <View key={tab.name} style={styles.row}>
+              <Text style={styles.rowTitle}>{tab.name}</Text>
+              <Text style={styles.rowText}>{tab.text}</Text>
+            </View>
+          ))}
+        </View>
 
-        <View style={styles.feature}>
-          <Text style={styles.emoji}>📝</Text>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureTitle}>Daily Journal</Text>
-            <Text style={styles.featureText}>
-              Write your thoughts with Sophy, your AI companion who provides
-              thoughtful prompts and reflections to deepen your practice. Choose 
-              from standard journaling, Gratitude mode, or InkBlot creative mode.
-            </Text>
+        {/* Sophy */}
+        <View style={styles.section}>
+          <Eyebrow sophy style={styles.eyebrow}>
+            Sophy
+          </Eyebrow>
+          <Text style={styles.body}>
+            Sophy is an AI companion. She reads an entry only when you ask her to, or when you turn on her
+            insights in You. Otherwise she stays quiet.
+          </Text>
+          <View style={styles.coralRow}>
+            <SophyOrb size={18} />
+            <Text style={styles.coralText}>Wherever you see coral, that is Sophy.</Text>
           </View>
         </View>
 
-        <View style={styles.feature}>
-          <Text style={styles.emoji}>✨</Text>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureTitle}>Manifest with WISH</Text>
-            <Text style={styles.featureText}>
-              Create powerful manifestations using the WISH framework:{'\n'}
-              • <Text style={styles.bold}>W</Text>ant - What do you desire?{'\n'}
-              • <Text style={styles.bold}>I</Text>magine - Visualize having it{'\n'}
-              • <Text style={styles.bold}>S</Text>nags - What obstacles exist?{'\n'}
-              • <Text style={styles.bold}>H</Text>ow-to - Your action plan
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.feature}>
-          <Text style={styles.emoji}>🎙️</Text>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureTitle}>InkOutLoud Voice Entry</Text>
-            <Text style={styles.featureText}>
-              Speak your journal entries when typing isn't convenient. Your voice 
-              is transcribed to text with emotional tone analysis showing your 
-              energy and stress levels.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.feature}>
-          <Text style={styles.emoji}>🔍</Text>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureTitle}>Smart Search</Text>
-            <Text style={styles.featureText}>
-              Find past entries using natural language. Ask questions like "when
-              did I feel most grateful?" and discover insights from your journal
-              history.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.feature}>
-          <Text style={styles.emoji}>📎</Text>
-          <View style={styles.featureContent}>
-            <Text style={styles.featureTitle}>Photo & File Attachments</Text>
-            <Text style={styles.featureText}>
-              Attach photos, documents, and files to your journal entries to 
-              capture the full context of your experiences.
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Subscription Tiers */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Subscription Tiers</Text>
-
-        {/* Connect tier removed 2026-07-04 (retired 2026-07-01). Prices live
-            in the stores via the paywall — never hardcoded here again. */}
-        <View style={styles.tier}>
-          <Text style={styles.tierTitle}>Free</Text>
-          <Text style={styles.tierText}>
-            A complete journal: every capture mode, gratitude practices, goals, and 3 Sophy interactions per day.
+        {/* Privacy */}
+        <View style={styles.section}>
+          <Eyebrow style={styles.eyebrow}>Privacy</Eyebrow>
+          <Text style={styles.body}>
+            Your entries are encrypted, never sold, and never used to train AI models.
           </Text>
         </View>
 
-        <View style={styles.tier}>
-          <Text style={styles.tierTitle}>Plus</Text>
-          <Text style={styles.tierText}>
-            Unlimited Sophy prompts and reflections, voice cleanup and analysis, search by meaning, insight
-            reports, attachments, and export. Pricing is shown on the upgrade screen.
+        {/* Support */}
+        <View style={styles.section}>
+          <Eyebrow style={styles.eyebrow}>Support</Eyebrow>
+          <Text style={styles.body}>
+            Questions, or something not working? Write to{' '}
+            <Text
+              style={styles.link}
+              accessibilityRole="link"
+              onPress={() => Linking.openURL(`mailto:${SUPPORT_EMAIL}`)}>
+              {SUPPORT_EMAIL}
+            </Text>
+            .
           </Text>
         </View>
-      </View>
 
-      {/* How to Use Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Getting Started</Text>
-
-        <View style={styles.step}>
-          <Text style={styles.stepNumber}>1</Text>
-          <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Start Journaling</Text>
-            <Text style={styles.stepText}>
-              Tap the Journal tab. Ask Sophy for a prompt or start writing 
-              freely. Use the microphone for voice entry.
-            </Text>
-          </View>
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>
+            InkWell {APP_VERSION} (build {BUILD_NUMBER})
+          </Text>
+          <Text style={styles.footerText}>© 2026 Pegasus Realm LLC</Text>
         </View>
-
-        <View style={styles.step}>
-          <Text style={styles.stepNumber}>2</Text>
-          <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Set Your WISH</Text>
-            <Text style={styles.stepText}>
-              Use the Manifest tab to create a WISH statement. Track your 
-              progress over 30, 60, or 90 days.
-            </Text>
-          </View>
-        </View>
-
-        <View style={styles.step}>
-          <Text style={styles.stepNumber}>3</Text>
-          <View style={styles.stepContent}>
-            <Text style={styles.stepTitle}>Review & Reflect</Text>
-            <Text style={styles.stepText}>
-              Browse Past Entries by date or use Smart Search to find patterns 
-              and insights in your journal history.
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Privacy & Security Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Privacy & Security</Text>
-        <Text style={styles.body}>
-          Your journal entries are private and securely stored. We never share 
-          your personal content with third parties. All AI interactions are 
-          processed securely, and you maintain full control over your data 
-          including the ability to export or delete it anytime.
-        </Text>
-      </View>
-
-      {/* Support Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Need Help?</Text>
-        <Text style={styles.body}>
-          If you have questions or need assistance, please contact us at{' '}
-          <Text style={styles.link}>support@inkwelljournal.io</Text>
-        </Text>
-      </View>
-
-      {/* Footer */}
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>InkWell v{appVersion} (Build {buildNumber})</Text>
-        <Text style={styles.footerText}>© 2026 Pegasus Realm LLC</Text>
-      </View>
       </View>
     </ScrollView>
   );
 }
 
 // Dynamic styles based on theme colors
-const createStyles = (colors: ThemeColors) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.bgCard,
-  },
-  section: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.base,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.borderLight,
-  },
-  title: {
-    fontFamily: fontFamily.header,
-    fontSize: fontSize.xxxl,
-    color: colors.brandPrimary,
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    fontFamily: fontFamily.header,
-    fontSize: fontSize.xl,
-    color: colors.brandPrimary,
-    marginBottom: spacing.base,
-  },
-  body: {
-    fontFamily: fontFamily.body,
-    fontSize: fontSize.md,
-    lineHeight: 26,
-    color: colors.fontMain,
-  },
-  bold: {
-    fontFamily: fontFamily.buttonBold,
-    color: colors.brandPrimary,
-  },
-  feature: {
-    flexDirection: 'row',
-    marginBottom: spacing.lg,
-  },
-  emoji: {
-    fontSize: fontSize.display,
-    marginRight: spacing.md,
-  },
-  featureContent: {
-    flex: 1,
-  },
-  featureTitle: {
-    fontFamily: fontFamily.header,
-    fontSize: fontSize.lg,
-    color: colors.fontMain,
-    marginBottom: 4,
-  },
-  featureText: {
-    fontFamily: fontFamily.body,
-    fontSize: fontSize.base,
-    lineHeight: 24,
-    color: colors.fontSecondary,
-  },
-  tier: {
-    marginBottom: spacing.lg,
-    paddingLeft: spacing.sm,
-    borderLeftWidth: 3,
-    borderLeftColor: colors.brandPrimary,
-  },
-  tierTitle: {
-    fontFamily: fontFamily.header,
-    fontSize: fontSize.lg,
-    color: colors.fontMain,
-    marginBottom: 4,
-  },
-  tierText: {
-    fontFamily: fontFamily.body,
-    fontSize: fontSize.base,
-    lineHeight: 22,
-    color: colors.fontSecondary,
-  },
-  step: {
-    flexDirection: 'row',
-    marginBottom: spacing.lg,
-  },
-  stepNumber: {
-    fontFamily: fontFamily.buttonBold,
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: colors.brandPrimary,
-    color: colors.fontWhite,
-    fontSize: fontSize.md,
-    textAlign: 'center',
-    lineHeight: 32,
-    marginRight: spacing.md,
-  },
-  stepContent: {
-    flex: 1,
-  },
-  stepTitle: {
-    fontFamily: fontFamily.header,
-    fontSize: fontSize.lg,
-    color: colors.fontMain,
-    marginBottom: 4,
-  },
-  stepText: {
-    fontFamily: fontFamily.body,
-    fontSize: fontSize.base,
-    lineHeight: 24,
-    color: colors.fontSecondary,
-  },
-  link: {
-    fontFamily: fontFamily.buttonBold,
-    color: colors.brandPrimary,
-  },
-  footer: {
-    paddingVertical: spacing.xxl,
-    alignItems: 'center',
-  },
-  footerText: {
-    fontFamily: fontFamily.button,
-    fontSize: fontSize.xs,
-    color: colors.fontMuted,
-    marginVertical: 2,
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: colors.bgPrimary,
+    },
+    scrollContent: {
+      paddingBottom: spacing.xxxl,
+    },
+    inner: {
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.xl,
+    },
+    lead: {
+      fontFamily: fontFamily.header,
+      fontSize: 26,
+      lineHeight: 34,
+      color: colors.fontMain,
+    },
+    section: {
+      marginTop: 32,
+    },
+    eyebrow: {
+      fontSize: 13,
+      marginBottom: spacing.md,
+    },
+    row: {
+      paddingVertical: 14,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderLight,
+    },
+    rowTitle: {
+      fontFamily: fontFamily.button,
+      fontSize: 16,
+      lineHeight: 22,
+      color: colors.fontMain,
+      marginBottom: 2,
+    },
+    rowText: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.fontSecondary,
+    },
+    body: {
+      fontFamily: fontFamily.body,
+      fontSize: 16,
+      lineHeight: 24,
+      color: colors.fontSecondary,
+    },
+    coralRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      marginTop: spacing.md,
+    },
+    coralText: {
+      flex: 1,
+      fontFamily: fontFamily.button,
+      fontSize: 15,
+      lineHeight: 21,
+      // accentReflection is Sophy's coral tuned per theme (deeper on light ground for contrast)
+      color: colors.accentReflection,
+    },
+    link: {
+      fontFamily: fontFamily.button,
+      color: colors.brandPrimary,
+      textDecorationLine: 'underline',
+    },
+    footer: {
+      marginTop: 40,
+      alignItems: 'center',
+    },
+    footerText: {
+      fontFamily: fontFamily.body,
+      fontSize: 13,
+      color: colors.fontMuted,
+      marginVertical: 2,
+    },
+  });

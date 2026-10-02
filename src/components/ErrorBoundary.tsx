@@ -35,14 +35,13 @@ export class ErrorBoundary extends Component<Props, State> {
 
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.message}>
-            {this.state.error?.message || 'An unexpected error occurred'}
-          </Text>
+          <Text style={styles.title}>Something went wrong on this screen.</Text>
+          <Text style={styles.message}>Your saved entries are safe. Try again, and if it keeps happening, email support@inkwelljournal.io.</Text>
           <TouchableOpacity
+            accessibilityRole="button"
             style={styles.button}
             onPress={() => this.setState({ hasError: false, error: null })}>
-            <Text style={styles.buttonText}>Try Again</Text>
+            <Text style={styles.buttonText}>Try again</Text>
           </TouchableOpacity>
         </View>
       );
@@ -57,23 +56,26 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#fff',
+    padding: 24,
+    // Fixed Ink & Light colors: this screen must render even if the theme is what broke.
+    backgroundColor: '#111A1C',
   },
   title: {
     fontSize: 20,
-    fontWeight: 'bold',
+    fontWeight: '600',
     marginBottom: 10,
-    color: '#333',
+    color: '#EDE7DC',
+    textAlign: 'center',
   },
   message: {
-    fontSize: 14,
-    color: '#666',
+    fontSize: 15,
+    lineHeight: 22,
+    color: '#A2A9A6',
     textAlign: 'center',
-    marginBottom: 20,
+    marginBottom: 24,
   },
   button: {
-    backgroundColor: '#007AFF',
+    backgroundColor: '#2A6972',
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,

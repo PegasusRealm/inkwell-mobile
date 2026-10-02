@@ -17,6 +17,14 @@
         "autoIncrement": false
       }
     },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk",
+        "credentialsSource": "remote",
+        "autoIncrement": false
+      }
+    },
     "production": {
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2",

@@ -48,7 +48,7 @@ export const ONBOARDING_TIPS: Record<OnboardingTipId, OnboardingTip> = {
     id: 'journal_intro',
     icon: '✍️',
     title: 'Your Space to Reflect',
-    message: 'Just start writing—even one sentence counts. There\'s no right or wrong way to journal.',
+    message: 'Just start writing. Even one sentence counts. There\'s no right or wrong way to journal.',
     actionLabel: 'Start Writing',
   },
   manifest_intro: {
@@ -76,7 +76,7 @@ export const ONBOARDING_TIPS: Record<OnboardingTipId, OnboardingTip> = {
     id: 'voice_intro',
     icon: '🎤',
     title: 'Speak Your Thoughts',
-    message: 'Don\'t feel like typing? Tap the mic to speak freely—we\'ll transcribe it for you.',
+    message: 'Don\'t feel like typing? Tap the mic to speak freely, and we\'ll write it down for you.',
     actionLabel: 'Got it!',
   },
 };

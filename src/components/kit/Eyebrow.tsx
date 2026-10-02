@@ -25,7 +25,7 @@ export const Eyebrow: React.FC<EyebrowProps> = ({sophy, style, children, ...rest
 const styles = StyleSheet.create({
   base: {
     fontFamily: fontFamily.bodyBold,
-    fontSize: 11,
+    fontSize: 13,
     letterSpacing: 1.8,
   },
 });

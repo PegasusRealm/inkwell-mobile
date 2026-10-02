@@ -1,11 +1,12 @@
 /**
- * Entries screen (route key: PastEntries) — v2 rebuild (M2, 2026-07-04)
- * Structure: web Entries tab parity (app.html) + mockup calendar contract:
- * "no cage lines — air, discs, and one quiet ring" (inkwell-v2.css).
- * Search is the headline feature, headline placement (web 2026-07-04).
- * Compounding surfaces ported (depth line + anniversary card).
- * Connect is dead — reply layer, coachReplies fetches, mark-as-read
- * removed (2026-07-04).
+ * Entries tab (v2.0, 2026-10-01). Mockup "4 Entries".
+ * Top to bottom: Ask your journal (free, semanticSearch), the month calendar
+ * (teal ring = a day with entries, filled teal disc = today, soft halo = selected),
+ * the selected day's entries, then "Your month" (Sophy's 30-day read, Plus).
+ * The depth line closes the screen as a plain fact.
+ * The anniversary card moved to Today (2026-10-01).
+ * Period insights: the server reads `period` ('weekly' | 'monthly'), not `days`.
+ * Type floor: dates and subtitles >= 15px, nothing under 13px.
  */
 import React, {useState, useEffect, useMemo, useCallback, useRef} from 'react';
 import {
@@ -15,26 +16,34 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  Pressable,
   Modal,
   Alert,
   ActivityIndicator,
+  Keyboard,
+  KeyboardAvoidingView,
+  Platform,
   useWindowDimensions,
 } from 'react-native';
+import Svg, {Circle, Path} from 'react-native-svg';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
 import {useFocusEffect} from '@react-navigation/native';
 import {useSafeAreaInsets} from 'react-native-safe-area-context';
-import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import PastEntryCard from '../components/PastEntryCard';
-import WeeklyActivityDots from '../components/WeeklyActivityDots';
-import {Card, IWButton, Pill, SophyBlock} from '../components/kit';
+import {IdentityBar, ScreenTitle} from '../components/IdentityBar';
+import PaywallModal from '../components/PaywallModal';
+import {IWButton, Pill, SophyOrb} from '../components/kit';
+import {ChevronLeftIcon, ChevronRightIcon, CloseIcon} from '../components/kit/icons';
 import {CoachHint} from '../components/FirstStepsCard';
 import {FirstStepsService} from '../services/firstStepsService';
+import {useSubscription} from '../hooks/useSubscription';
 import type {TabScreenProps} from '../navigation/types';
 import {iPadContentStyle} from '../utils/iPad';
 
-// Example questions only history can answer (web verbatim, v2 Phase 4)
+// Questions only history can answer. Shown while the search field is focused and empty.
 const SEARCH_EXAMPLES = [
   'When did I feel proud of myself?',
   "What did I say I'd do differently last time?",
@@ -44,11 +53,31 @@ const SEARCH_EXAMPLES = [
 
 const DAYS_OF_WEEK = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}) => {
+const SEARCH_URL = 'https://us-central1-inkwell-alpha.cloudfunctions.net/semanticSearch';
+const INSIGHTS_URL = __DEV__
+  ? 'http://localhost:5001/inkwell-alpha/us-central1/generatePeriodInsights'
+  : 'https://us-central1-inkwell-alpha.cloudfunctions.net/generatePeriodInsights';
+
+type Period = '7' | '30';
+// generatePeriodInsights reads `period`: 'monthly' gives 30 days, anything else 7.
+const SERVER_PERIOD: Record<Period, 'weekly' | 'monthly'> = {'7': 'weekly', '30': 'monthly'};
+
+const SearchIcon: React.FC<{size?: number; color: string}> = ({size = 19, color}) => (
+  <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+    <Circle cx={11} cy={11} r={6.5} stroke={color} strokeWidth={2} />
+    <Path d="M20 20l-4.2-4.2" stroke={color} strokeWidth={2} strokeLinecap="round" />
+  </Svg>
+);
+
+const isSameDay = (a: Date, b: Date) =>
+  a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+
+const PastEntriesScreen: React.FC<TabScreenProps<'Entries'>> = ({navigation, route}) => {
   const {colors} = useTheme();
   const {width: screenWidth} = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const {isPremium, loading: subscriptionLoading, showPaywall, openPaywall, closePaywall} = useSubscription();
 
   // FirstSteps: visiting Entries completes the quest step (web onTabVisit parity)
   useFocusEffect(
@@ -57,61 +86,75 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
     }, []),
   );
 
-  // The identity bar replaces the navigation header (matches JournalScreen)
-  useEffect(() => {
-    navigation.setOptions({headerShown: false});
-  }, [navigation]);
+  // Week dots in the identity bar refresh each time the tab comes back into view
+  const [refreshTick, setRefreshTick] = useState(0);
+  const hasFocusedRef = useRef(false);
+  useFocusEffect(
+    useCallback(() => {
+      if (hasFocusedRef.current) {
+        setRefreshTick(t => t + 1);
+      } else {
+        hasFocusedRef.current = true;
+      }
+    }, []),
+  );
 
+  // Calendar + selected day
   const [displayedMonth, setDisplayedMonth] = useState(new Date().getMonth());
   const [displayedYear, setDisplayedYear] = useState(new Date().getFullYear());
-  const [searchQuery, setSearchQuery] = useState('');
   const [entryDates, setEntryDates] = useState<Set<string>>(new Set());
-  const [selectedDateEntries, setSelectedDateEntries] = useState<any[]>([]);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [dayEntries, setDayEntries] = useState<any[]>([]);
+  const [loadingEntries, setLoadingEntries] = useState(false);
+
+  // Ask your journal (free)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchFocused, setSearchFocused] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [showingSearchResults, setShowingSearchResults] = useState(false);
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [lastQuery, setLastQuery] = useState('');
+  const [searchError, setSearchError] = useState('');
+
+  // Edit
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [editingEntry, setEditingEntry] = useState<any>(null);
   const [editText, setEditText] = useState('');
-  const [searching, setSearching] = useState(false);
-  const [showingSearchResults, setShowingSearchResults] = useState(false);
-  const [loadingEntries, setLoadingEntries] = useState(false);
 
-  // Period Insights state
-  const [generatingInsights, setGeneratingInsights] = useState(false);
-  const [insightsModalVisible, setInsightsModalVisible] = useState(false);
-  const [insightsContent, setInsightsContent] = useState('');
-  const [insightsPeriod, setInsightsPeriod] = useState<'7' | '30'>('7');
+  // Your month (Sophy's period read)
+  const [monthOpen, setMonthOpen] = useState(false);
+  const [monthView, setMonthView] = useState<Period>('30');
+  const [monthLoading, setMonthLoading] = useState<Period | null>(null);
+  const [insights, setInsights] = useState<Partial<Record<Period, {text: string; count?: number}>>>({});
+  const [monthNote, setMonthNote] = useState<string | null>(null);
+  const [monthNoteIsError, setMonthNoteIsError] = useState(false);
 
-  // Compounding surfaces (web v2 Phase 4 port)
+  // Depth line: how far back the journal goes, stated as a fact
   const [depthLine, setDepthLine] = useState('');
-  const [anniversary, setAnniversary] = useState<{
-    label: string;
-    title: string;
-    snippet: string;
-    fullText: string;
-    expanded: boolean;
-  } | null>(null);
 
-  // Refs to prevent concurrent loading / dependency loops
-  const isLoadingEntriesRef = useRef(false);
-  const selectedDateRef = useRef<string | null>(null);
-  const compoundingLoadedRef = useRef(false);
+  const selectedDayRef = useRef<number | null>(null);
+  const dayRequestRef = useRef(0); // latest day request wins
+  const monthKeyRef = useRef(''); // latest month load wins
+  const initialPickDoneRef = useRef(false);
+  // The month on screen, read at call time so a late async call never queries a stale month
+  const displayedRef = useRef({y: displayedYear, m: displayedMonth});
+  displayedRef.current = {y: displayedYear, m: displayedMonth};
+  // Today's memory card opens Entries on that entry's day
+  const pendingJumpRef = useRef<{y: number; m: number; d: number} | null>(null);
+  const depthLoadedRef = useRef(false);
 
-  // Load entries and identify dates with journal entries
+  // Load the days that hold entries whenever the shown month changes
   useEffect(() => {
     loadEntryDates();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [displayedMonth, displayedYear]);
 
-  // ── Compounding surfaces: the journal's growing depth made visible ──
   useEffect(() => {
-    const loadCompoundingSurfaces = async () => {
-      if (compoundingLoadedRef.current) return;
+    const loadDepth = async () => {
+      if (depthLoadedRef.current) return;
       const user = auth().currentUser;
       if (!user) return;
-      compoundingLoadedRef.current = true;
-
-      // Depth indicator: how far back the journal goes
+      depthLoadedRef.current = true;
       try {
         const firstSnap = await firestore()
           .collection('journalEntries')
@@ -122,122 +165,82 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         if (!firstSnap.empty) {
           const first = firstSnap.docs[0].data().createdAt;
           const firstDate = first?.toDate ? first.toDate() : new Date(first);
+          if (isNaN(firstDate.getTime())) return;
           const months = Math.floor((Date.now() - firstDate.getTime()) / (30.44 * 24 * 3600 * 1000));
           const since = firstDate.toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
           setDepthLine(
             months >= 1
-              ? `Your journal holds ${months} month${months === 1 ? '' : 's'} of your thinking (since ${since}). Everything you write compounds.`
-              : 'Your journal is just beginning. Everything you write from here compounds.',
+              ? `Your journal holds ${months} month${months === 1 ? '' : 's'} of your thinking, since ${since}.`
+              : `Your journal began on ${firstDate.toLocaleDateString('en-US', {month: 'long', day: 'numeric'})}.`,
           );
         }
       } catch (e: any) {
-        console.warn('Depth indicator skipped:', e.message);
-      }
-
-      // Anniversary resurfacing: one year ago, else one month ago
-      try {
-        const windows = [
-          {label: 'One year ago you wrote', ms: 365 * 24 * 3600 * 1000, pad: 3 * 24 * 3600 * 1000},
-          {label: 'One month ago you wrote', ms: 30 * 24 * 3600 * 1000, pad: 2 * 24 * 3600 * 1000},
-        ];
-        for (const w of windows) {
-          const center = Date.now() - w.ms;
-          const snap = await firestore()
-            .collection('journalEntries')
-            .where('userId', '==', user.uid)
-            .where('createdAt', '>=', new Date(center - w.pad))
-            .where('createdAt', '<=', new Date(center + w.pad))
-            .orderBy('createdAt', 'desc')
-            .limit(1)
-            .get();
-          if (!snap.empty) {
-            const e = snap.docs[0].data();
-            const d = e.createdAt?.toDate ? e.createdAt.toDate() : new Date(e.createdAt);
-            const fullText = e.text || '';
-            setAnniversary({
-              label: `${w.label}...`,
-              title: `${e.title || 'Journal entry'} — ${d.toLocaleDateString('en-US', {
-                month: 'long',
-                day: 'numeric',
-                year: 'numeric',
-              })}`,
-              snippet: fullText.slice(0, 220) + (fullText.length > 220 ? '…' : ''),
-              fullText,
-              expanded: false,
-            });
-            break;
-          }
-        }
-      } catch (e: any) {
-        console.warn('Anniversary resurfacing skipped:', e.message);
+        console.warn('Depth line skipped:', e.message);
       }
     };
-    loadCompoundingSurfaces();
+    loadDepth();
   }, []);
 
-  const loadEntryDates = async (forceServer = false) => {
+  const loadEntryDates = async (forceServer = false): Promise<Set<string>> => {
+    const key = `${displayedYear}-${displayedMonth}`;
+    monthKeyRef.current = key;
+    const datesWithEntries = new Set<string>();
     try {
       const user = auth().currentUser;
-      if (!user) {
-        setEntryDates(new Set());
-        return;
+      if (user) {
+        const startOfMonth = new Date(displayedYear, displayedMonth, 1);
+        const endOfMonth = new Date(displayedYear, displayedMonth + 1, 0, 23, 59, 59, 999);
+
+        const query = firestore()
+          .collection('journalEntries')
+          .where('userId', '==', user.uid)
+          .where('createdAt', '>=', startOfMonth)
+          .where('createdAt', '<=', endOfMonth);
+
+        const snapshot = forceServer ? await query.get({source: 'server'}) : await query.get();
+
+        snapshot.docs.forEach(doc => {
+          const entry = doc.data();
+          let entryDate: Date | null = null;
+          if (entry.createdAt?.toDate) {
+            entryDate = entry.createdAt.toDate();
+          } else if (entry.date) {
+            entryDate = new Date(entry.date);
+          }
+          if (entryDate) {
+            datesWithEntries.add(entryDate.getDate().toString());
+          }
+        });
       }
-
-      const startOfMonth = new Date(displayedYear, displayedMonth, 1);
-      const endOfMonth = new Date(displayedYear, displayedMonth + 1, 0, 23, 59, 59, 999);
-
-      const query = firestore()
-        .collection('journalEntries')
-        .where('userId', '==', user.uid)
-        .where('createdAt', '>=', startOfMonth)
-        .where('createdAt', '<=', endOfMonth);
-
-      const snapshot = forceServer ? await query.get({source: 'server'}) : await query.get();
-
-      const datesWithEntries = new Set<string>();
-      snapshot.docs.forEach(doc => {
-        const entry = doc.data();
-        let entryDate: Date | null = null;
-        if (entry.createdAt?.toDate) {
-          entryDate = entry.createdAt.toDate();
-        } else if (entry.date) {
-          entryDate = new Date(entry.date);
-        }
-        if (entryDate) {
-          datesWithEntries.add(entryDate.getDate().toString());
-        }
-      });
-
-      setEntryDates(datesWithEntries);
     } catch (error) {
       console.error('Error loading entry dates:', error);
-      setEntryDates(new Set());
     }
+    if (monthKeyRef.current === key) {
+      setEntryDates(datesWithEntries);
+    }
+    return datesWithEntries;
   };
 
+  /** Load one day's entries. `silent` refreshes without the spinner, so open entries stay open. */
   const handleDateClick = useCallback(
-    async (day: number) => {
-      if (isLoadingEntriesRef.current) {
-        return;
-      }
-
-      const newSelectedDate = `${displayedMonth + 1}/${day}/${displayedYear}`;
-      setSelectedDate(newSelectedDate);
+    async (day: number, silent = false) => {
+      const requestId = ++dayRequestRef.current;
       setSelectedDay(day);
-      selectedDateRef.current = newSelectedDate;
-      setLoadingEntries(true);
-      isLoadingEntriesRef.current = true;
-      setShowingSearchResults(false);
+      selectedDayRef.current = day;
+      if (!silent) {
+        setLoadingEntries(true);
+      }
 
       try {
         const user = auth().currentUser;
         if (!user) {
-          setSelectedDateEntries([]);
+          setDayEntries([]);
           return;
         }
 
-        const startOfDay = new Date(displayedYear, displayedMonth, day, 0, 0, 0, 0);
-        const endOfDay = new Date(displayedYear, displayedMonth, day, 23, 59, 59, 999);
+        const {y, m} = displayedRef.current;
+        const startOfDay = new Date(y, m, day, 0, 0, 0, 0);
+        const endOfDay = new Date(y, m, day, 23, 59, 59, 999);
 
         const snapshot = await firestore()
           .collection('journalEntries')
@@ -246,6 +249,8 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
           .where('createdAt', '<=', endOfDay)
           .orderBy('createdAt', 'desc')
           .get({source: 'server'});
+
+        if (requestId !== dayRequestRef.current) return;
 
         const matchingEntries = snapshot.docs.map(doc => {
           const entryData = doc.data();
@@ -256,37 +261,81 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
           };
         });
 
-        setSelectedDateEntries(matchingEntries);
+        setDayEntries(matchingEntries);
       } catch (error) {
         console.error('Error loading entries for date:', error);
-        setSelectedDateEntries([]);
+        if (requestId === dayRequestRef.current) {
+          setDayEntries([]);
+        }
       } finally {
-        setLoadingEntries(false);
-        isLoadingEntriesRef.current = false;
+        if (requestId === dayRequestRef.current) {
+          setLoadingEntries(false);
+        }
       }
     },
     [displayedYear, displayedMonth],
   );
 
-  // Refresh calendar data when screen comes into focus
+  // Jump to a day (from Today's memory card): show that month, then open that day
+  const jumpTo = route.params?.jumpTo;
+  useEffect(() => {
+    if (!jumpTo) return;
+    const [y, m, d] = jumpTo.split('-').map(Number);
+    navigation.setParams({jumpTo: undefined});
+    if (!y || !m || !d) return;
+    initialPickDoneRef.current = true;
+    dayRequestRef.current++;
+    setShowingSearchResults(false);
+    selectedDayRef.current = d;
+    setSelectedDay(d);
+    if (displayedRef.current.y === y && displayedRef.current.m === m - 1) {
+      handleDateClick(d);
+      return;
+    }
+    setDayEntries([]);
+    pendingJumpRef.current = {y, m: m - 1, d};
+    setDisplayedYear(y);
+    setDisplayedMonth(m - 1);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jumpTo]);
+  useEffect(() => {
+    const p = pendingJumpRef.current;
+    if (p && p.y === displayedYear && p.m === displayedMonth) {
+      pendingJumpRef.current = null;
+      handleDateClick(p.d);
+    }
+  }, [displayedYear, displayedMonth, handleDateClick]);
+
+  /** First visit: open today if it holds entries, else the latest earlier day this month, else today. */
+  const pickStartDay = (dates: Set<string>): number => {
+    const todayNum = new Date().getDate();
+    if (dates.has(String(todayNum))) return todayNum;
+    const earlier = Array.from(dates)
+      .map(Number)
+      .filter(d => !isNaN(d) && d < todayNum);
+    return earlier.length > 0 ? Math.max(...earlier) : todayNum;
+  };
+
+  // Refresh calendar data (and the open day) when the tab comes into focus
   useFocusEffect(
     useCallback(() => {
       const refreshData = async () => {
-        await loadEntryDates(true);
-        const currentSelectedDate = selectedDateRef.current;
-        if (currentSelectedDate && !showingSearchResults) {
-          const parts = currentSelectedDate.split('/');
-          if (parts.length === 3) {
-            const day = parseInt(parts[1], 10);
-            if (!isNaN(day)) {
-              handleDateClick(day);
-            }
+        const dates = await loadEntryDates(true);
+        if (!initialPickDoneRef.current) {
+          initialPickDoneRef.current = true;
+          if (selectedDayRef.current === null) {
+            handleDateClick(pickStartDay(dates));
           }
+          return;
+        }
+        const day = selectedDayRef.current;
+        if (day !== null) {
+          handleDateClick(day, true);
         }
       };
       refreshData();
       // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [handleDateClick, showingSearchResults]),
+    }, [handleDateClick]),
   );
 
   const changeMonth = (delta: number) => {
@@ -301,11 +350,12 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
     }
     setDisplayedMonth(newMonth);
     setDisplayedYear(newYear);
-    // Clear stale selection — a day number from the old month must not ring in the new one
+    // Clear the old selection: a day number from the old month must not ring in the new one
+    dayRequestRef.current++;
     setSelectedDay(null);
-    setSelectedDate(null);
-    selectedDateRef.current = null;
-    setSelectedDateEntries([]);
+    selectedDayRef.current = null;
+    setDayEntries([]);
+    setLoadingEntries(false);
   };
 
   const generateCalendar = () => {
@@ -333,8 +383,9 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
     return weeks;
   };
 
+  // ── Edit / delete (same writes as before) ──
   const handleEdit = (entryId: string) => {
-    const entry = selectedDateEntries.find(e => e.id === entryId);
+    const entry = dayEntries.find(e => e.id === entryId) || searchResults.find(e => e.id === entryId);
     if (entry) {
       setEditingEntry(entry);
       setEditText(entry.text);
@@ -351,57 +402,60 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         updatedAt: firestore.FieldValue.serverTimestamp(),
       });
 
-      setSelectedDateEntries(prev =>
-        prev.map(entry => (entry.id === editingEntry.id ? {...entry, text: editText.trim()} : entry)),
-      );
+      const applyEdit = (list: any[]) =>
+        list.map(entry => (entry.id === editingEntry.id ? {...entry, text: editText.trim()} : entry));
+      setDayEntries(applyEdit);
+      setSearchResults(applyEdit);
 
       setEditModalVisible(false);
       setEditingEntry(null);
       setEditText('');
     } catch (error) {
       console.error('Error saving edit:', error);
-      Alert.alert('Error', 'Failed to update entry. Please try again.');
+      Alert.alert('Could not save', 'The change did not save. Please try again.');
     }
   };
 
   const handleDelete = async (entryId: string) => {
     try {
       await firestore().collection('journalEntries').doc(entryId).delete();
-      setSelectedDateEntries(prev => prev.filter(entry => entry.id !== entryId));
+      setDayEntries(prev => prev.filter(entry => entry.id !== entryId));
+      setSearchResults(prev => prev.filter(entry => entry.id !== entryId));
       loadEntryDates();
     } catch (error) {
       console.error('Error deleting entry:', error);
-      Alert.alert('Error', 'Failed to delete entry. Please try again.');
+      Alert.alert('Could not delete', 'The entry was not deleted. Please try again.');
     }
   };
 
-  const handleSmartSearch = async () => {
-    if (!searchQuery.trim()) {
-      return;
-    }
+  // ── Ask your journal (semanticSearch, free) ──
+  const runSearch = async (raw: string) => {
+    const query = raw.trim();
+    if (!query || searching) return;
 
+    Keyboard.dismiss();
     setSearching(true);
     setShowingSearchResults(true);
-    setSelectedDate(null);
-    setSelectedDay(null);
-    selectedDateRef.current = null;
+    setSearchResults([]);
+    setSearchError('');
+    setLastQuery(query);
 
     try {
       const user = auth().currentUser;
       if (!user) {
-        Alert.alert('Error', 'You must be logged in to search your journal');
+        setSearchError('Sign in again to search your journal.');
         return;
       }
 
       const idToken = await user.getIdToken();
 
-      const response = await fetch('https://us-central1-inkwell-alpha.cloudfunctions.net/semanticSearch', {
+      const response = await fetch(SEARCH_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({query: searchQuery}),
+        body: JSON.stringify({query}),
       });
 
       if (!response.ok) {
@@ -410,14 +464,12 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
 
       const data = await response.json();
       const results = data.results || [];
-
       if (results.length === 0) {
-        setSelectedDateEntries([]);
         return;
       }
 
       // Load full entry data from Firestore using the IDs from semantic search
-      const entryIds = results.map((r: any) => r.id);
+      const entryIds: string[] = results.map((r: any) => r.id).filter(Boolean);
       const fullResults: any[] = [];
 
       // Firestore 'in' queries support up to 10 items at a time
@@ -438,10 +490,14 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
         }
       }
 
-      setSelectedDateEntries(fullResults);
+      // Keep the order semanticSearch ranked them in
+      const rank = new Map(entryIds.map((id, index) => [id, index]));
+      fullResults.sort((a, b) => (rank.get(a.id) ?? 0) - (rank.get(b.id) ?? 0));
+
+      setSearchResults(fullResults);
     } catch (error) {
       console.error('Smart Search error:', error);
-      Alert.alert('Search Error', 'Failed to search your journal. Please try again.');
+      setSearchError('Search did not go through. Check your connection and try again.');
     } finally {
       setSearching(false);
     }
@@ -450,323 +506,438 @@ const PastEntriesScreen: React.FC<TabScreenProps<'PastEntries'>> = ({navigation}
   const clearSearch = () => {
     setSearchQuery('');
     setShowingSearchResults(false);
-    setSelectedDateEntries([]);
+    setSearchResults([]);
+    setSearchError('');
+    setLastQuery('');
   };
 
-  // Generate Period Insights (7-day or 30-day)
-  const handleGeneratePeriodInsights = async (days: '7' | '30') => {
-    const user = auth().currentUser;
-    if (!user) {
-      Alert.alert('Error', 'Please log in to generate insights.');
+  // ── Your month: Sophy's 30-day read (7-day as the secondary option) ──
+  const runInsight = async (period: Period) => {
+    if (monthLoading) return;
+
+    // Already read this session: just show it
+    if (insights[period]) {
+      setMonthView(period);
+      setMonthNote(null);
+      setMonthOpen(true);
       return;
     }
 
-    setGeneratingInsights(true);
-    setInsightsPeriod(days);
+    const user = auth().currentUser;
+    if (!user) {
+      setMonthView(period);
+      setMonthNote('Sign in again so Sophy can read your entries.');
+      setMonthNoteIsError(false);
+      setMonthOpen(true);
+      return;
+    }
+
+    const days = period === '30' ? 30 : 7;
+    setMonthLoading(period);
 
     try {
       const idToken = await user.getIdToken(true);
-      const endpoint = __DEV__
-        ? 'http://localhost:5001/inkwell-alpha/us-central1/generatePeriodInsights'
-        : 'https://us-central1-inkwell-alpha.cloudfunctions.net/generatePeriodInsights';
-
-      const response = await fetch(endpoint, {
+      const response = await fetch(INSIGHTS_URL, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${idToken}`,
         },
-        body: JSON.stringify({days: parseInt(days, 10)}),
+        // The server reads `period`; `days` rides along for older builds of the function
+        body: JSON.stringify({period: SERVER_PERIOD[period], days}),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Period insights error:', response.status, errorText);
-        throw new Error(`Failed to generate insights: ${response.status}`);
+      const raw = await response.text();
+      let data: any = {};
+      try {
+        data = raw ? JSON.parse(raw) : {};
+      } catch {
+        data = {};
       }
 
-      const data = await response.json();
+      // Plus gate: the server answers 200 {upgradeRequired: true}. Open the Plus preview, no error.
+      const errorText = typeof data.error === 'string' ? data.error : '';
+      if (data.upgradeRequired || /upgrade|requires? inkwell plus/i.test(errorText)) {
+        openPaywall();
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error(`Period insights failed: ${response.status} ${raw}`);
+      }
 
       if (data.insight) {
-        setInsightsContent(data.insight);
-        setInsightsModalVisible(true);
-      } else if (data.message) {
-        Alert.alert('Not Enough Data', data.message);
+        setInsights(prev => ({
+          ...prev,
+          [period]: {text: String(data.insight), count: typeof data.entryCount === 'number' ? data.entryCount : undefined},
+        }));
+        setMonthNote(null);
+      } else if (data.insufficientEntries || data.message) {
+        const have =
+          typeof data.entryCount === 'number' ? ` You have ${data.entryCount} so far.` : '';
+        setMonthNote(`Sophy needs at least 3 entries from the last ${days} days to see a pattern.${have}`);
+        setMonthNoteIsError(false);
       } else {
-        Alert.alert('Error', 'Could not generate insights at this time.');
+        setMonthNote('Sophy could not read your entries just now.');
+        setMonthNoteIsError(true);
       }
-    } catch (error: any) {
+      setMonthView(period);
+      setMonthOpen(true);
+    } catch (error) {
       console.error('Error generating period insights:', error);
-      Alert.alert('Error', 'Failed to generate insights. Please try again later.');
+      setMonthView(period);
+      setMonthNote('Sophy could not read your entries just now.');
+      setMonthNoteIsError(true);
+      setMonthOpen(true);
     } finally {
-      setGeneratingInsights(false);
+      setMonthLoading(null);
     }
   };
 
-  const monthName = new Date(displayedYear, displayedMonth, 1).toLocaleString('default', {month: 'long'});
+  const handleMonthPress = () => {
+    if (monthLoading) return;
+    if (monthOpen) {
+      setMonthOpen(false); // tapping again closes it
+      return;
+    }
+    if (insights[monthView]) {
+      setMonthNote(null);
+      setMonthOpen(true);
+      return;
+    }
+    runInsight('30');
+  };
+
+  // ── Derived view values ──
+  const monthName = new Date(displayedYear, displayedMonth, 1).toLocaleString('en-US', {month: 'long'});
   const weeks = generateCalendar();
   const today = new Date();
   const isCurrentMonth = displayedMonth === today.getMonth() && displayedYear === today.getFullYear();
 
+  const selectedDate = selectedDay !== null ? new Date(displayedYear, displayedMonth, selectedDay) : null;
+  const emptyDayText = selectedDate
+    ? isSameDay(selectedDate, today)
+      ? 'Nothing written today yet.'
+      : `Nothing written on ${selectedDate.toLocaleDateString('en-US', {
+          weekday: 'long',
+          month: 'long',
+          day: 'numeric',
+          ...(selectedDate.getFullYear() !== today.getFullYear() ? {year: 'numeric'} : {}),
+        })}.`
+    : 'Tap a ringed day to read what you wrote.';
+
+  const shownInsight = monthOpen ? insights[monthView] : undefined;
+  const viewingWeek = monthOpen && monthView === '7';
+  const monthTitle = viewingWeek ? 'Your week' : 'Your month';
+  const monthSubtitle = monthLoading
+    ? 'Sophy is reading...'
+    : shownInsight?.count
+    ? `Sophy read ${shownInsight.count} ${shownInsight.count === 1 ? 'entry' : 'entries'} from your last ${
+        monthView === '30' ? '30' : '7'
+      } days.`
+    : viewingWeek
+    ? 'Sophy reads your last 7 days.'
+    : 'Sophy reads your last 30 days.';
+  const showPeriodToggle = monthOpen && ((monthView === '30' && !!insights['30']) || monthView === '7');
+
+  const showExamples = searchFocused && !searchQuery && !showingSearchResults;
+  const canAsk = !!searchQuery.trim() && (!showingSearchResults || searchQuery.trim() !== lastQuery);
+
   return (
     <View style={styles.screen}>
-      {/* ─── Identity bar: wordmark + week dots (matches JournalScreen) ─── */}
-      <View style={[styles.identityBar, {paddingTop: insets.top + spacing.sm}]}>
-        <Text style={styles.wordmark}>
-          Ink<Text style={styles.wordmarkAccent}>Well</Text>
-        </Text>
-        <View style={styles.identityRight}>
-          <WeeklyActivityDots />
-          <TouchableOpacity
-            onPress={() => navigation.navigate('Settings')}
-            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
-            <Text style={styles.settingsLink}>Settings</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <IdentityBar refreshTrigger={refreshTick} />
 
-      <ScrollView style={styles.container} contentContainerStyle={[styles.content, iPadContentStyle(screenWidth)]}>
-        <Text style={styles.screenTitle}>Entries</Text>
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={[styles.content, iPadContentStyle(screenWidth)]}
+        keyboardShouldPersistTaps="handled">
+        <ScreenTitle>Entries</ScreenTitle>
 
-        {/* Depth line — the compounding, one whisper */}
-        {depthLine ? <Text style={styles.depthLine}>{depthLine}</Text> : null}
-
-        {/* Anniversary resurfacing — the journal remembering, quietly */}
-        {anniversary && (
-          <View style={styles.anniversaryCard}>
-            <Text style={styles.anniversaryLabel}>{anniversary.label}</Text>
-            <Text style={styles.anniversaryTitle}>{anniversary.title}</Text>
-            <Text style={styles.anniversarySnippet}>
-              {anniversary.expanded ? anniversary.fullText : anniversary.snippet}
-            </Text>
-            {!anniversary.expanded && anniversary.fullText.length > 220 && (
-              <TouchableOpacity onPress={() => setAnniversary(prev => (prev ? {...prev, expanded: true} : prev))}>
-                <Text style={styles.anniversaryMore}>Read the rest</Text>
+        {/* ─── a. Ask your journal anything (free) ─── */}
+        <View style={styles.section}>
+          <View style={[styles.searchField, searchFocused && styles.searchFieldFocused]}>
+            <SearchIcon color={colors.brandPrimary} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder="Ask your journal anything"
+              placeholderTextColor={colors.fontMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              onSubmitEditing={() => runSearch(searchQuery)}
+              onFocus={() => setSearchFocused(true)}
+              onBlur={() => setSearchFocused(false)}
+              returnKeyType="search"
+              editable={!searching}
+              accessibilityLabel="Ask your journal anything"
+            />
+            {searching ? (
+              <ActivityIndicator size="small" color={colors.brandPrimary} />
+            ) : canAsk ? (
+              <TouchableOpacity
+                onPress={() => runSearch(searchQuery)}
+                hitSlop={{top: 10, bottom: 10, left: 8, right: 8}}
+                accessibilityRole="button">
+                <Text style={styles.askLink}>Ask</Text>
+              </TouchableOpacity>
+            ) : null}
+            {!searching && (searchQuery.length > 0 || showingSearchResults) && (
+              <TouchableOpacity
+                onPress={clearSearch}
+                hitSlop={{top: 10, bottom: 10, left: 8, right: 8}}
+                accessibilityRole="button"
+                accessibilityLabel="Clear search">
+                <CloseIcon color={colors.fontMuted} size={18} />
               </TouchableOpacity>
             )}
           </View>
-        )}
 
-        {/* ─── Ask Your Journal Anything — headline feature, headline placement ─── */}
-        <Card style={styles.sectionCard}>
-          <Text style={styles.sectionHeader}>Ask Your Journal Anything</Text>
-          <TextInput
-            style={styles.searchInput}
-            placeholder="ask anything about your past entries"
-            placeholderTextColor={colors.fontMuted}
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            onSubmitEditing={handleSmartSearch}
-            returnKeyType="search"
-            editable={!searching}
-          />
-          <View style={styles.searchButtonRow}>
-            <IWButton
-              voice="sophy"
-              title={searching ? 'Searching...' : 'Search'}
-              onPress={handleSmartSearch}
-              disabled={!searchQuery.trim() || searching}
-              loading={searching}
-              style={styles.searchButton}
-            />
-            {showingSearchResults && <IWButton voice="gray" title="Clear" onPress={clearSearch} />}
-          </View>
-
-          <Text style={styles.examplesLabel}>Try asking your journal:</Text>
-          <View style={styles.examplesRow}>
-            {SEARCH_EXAMPLES.map(q => (
-              <Pill key={q} label={q} onPress={() => setSearchQuery(q)} />
-            ))}
-          </View>
-          <Text style={styles.examplesHint}>The longer you write, the more your journal can answer.</Text>
-        </Card>
-
-        {/* ─── Calendar: no cage lines — air, discs, and one quiet ring ─── */}
-        <CoachHint markId="calendar" text="Teal days hold your words. Tap one." />
-        <Card style={styles.sectionCard}>
-          <View style={styles.calendarNav}>
-            <TouchableOpacity
-              style={styles.calNavButton}
-              onPress={() => changeMonth(-1)}
-              accessibilityLabel="Previous month">
-              <Text style={styles.calNavChevron}>‹</Text>
-            </TouchableOpacity>
-            <Text style={styles.monthHeading}>
-              {monthName} {displayedYear}
-            </Text>
-            <TouchableOpacity
-              style={styles.calNavButton}
-              onPress={() => changeMonth(1)}
-              accessibilityLabel="Next month">
-              <Text style={styles.calNavChevron}>›</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Day-of-week header */}
-          <View style={styles.calendarRow}>
-            {DAYS_OF_WEEK.map((day, i) => (
-              <View key={i} style={styles.calendarCellWrap}>
-                <Text style={styles.calendarHeaderText}>{day}</Text>
-              </View>
-            ))}
-          </View>
-
-          {/* Date rows */}
-          {weeks.map((week, weekIndex) => (
-            <View key={weekIndex} style={styles.calendarRow}>
-              {week.map((day, dayIndex) => {
-                const hasEntry = day ? entryDates.has(day.toString()) : false;
-                const isToday = day !== null && isCurrentMonth && day === today.getDate();
-                const isSelected = day !== null && !showingSearchResults && day === selectedDay;
-
-                return (
-                  <View key={dayIndex} style={styles.calendarCellWrap}>
-                    {day !== null && (
-                      <TouchableOpacity
-                        style={[
-                          styles.calDay,
-                          hasEntry && styles.calDayEntry,
-                          isToday && styles.calDayToday,
-                          isSelected && !hasEntry && styles.calDaySelected,
-                          isSelected && hasEntry && styles.calDaySelectedEntry,
-                        ]}
-                        onPress={() => handleDateClick(day)}
-                        accessibilityLabel={`${monthName} ${day}${hasEntry ? ', has entries' : ''}`}>
-                        <Text
-                          style={[
-                            styles.calDayText,
-                            hasEntry && styles.calDayTextEntry,
-                          ]}>
-                          {day}
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
-                );
-              })}
+          {showExamples && (
+            <View style={styles.examplesRow}>
+              {SEARCH_EXAMPLES.map(q => (
+                <Pill
+                  key={q}
+                  label={q}
+                  onPress={() => {
+                    setSearchQuery(q);
+                    runSearch(q);
+                  }}
+                />
+              ))}
             </View>
-          ))}
-        </Card>
-
-        {/* ─── Sophy: period insights — her block, her color ─── */}
-        <SophyBlock line="Give me a week of your words and I’ll show you what’s building." style={styles.sectionCard}>
-          <View style={styles.insightsButtonRow}>
-            <IWButton
-              voice="sophy"
-              small
-              title="7-Day Insights"
-              onPress={() => handleGeneratePeriodInsights('7')}
-              loading={generatingInsights && insightsPeriod === '7'}
-              disabled={generatingInsights}
-            />
-            <IWButton
-              voice="sophy"
-              small
-              title="30-Day Insights"
-              onPress={() => handleGeneratePeriodInsights('30')}
-              loading={generatingInsights && insightsPeriod === '30'}
-              disabled={generatingInsights}
-            />
-          </View>
-        </SophyBlock>
-
-        {/* ─── Entries ─── */}
-        <View style={styles.entriesContainer}>
-          {showingSearchResults ? (
-            <Text style={styles.entriesHeader}>
-              {searching
-                ? 'Searching your journal...'
-                : `Found ${selectedDateEntries.length} relevant ${
-                    selectedDateEntries.length === 1 ? 'entry' : 'entries'
-                  }`}
-            </Text>
-          ) : selectedDate ? (
-            <Text style={styles.entriesHeader}>Entries for {selectedDate}</Text>
-          ) : null}
-
-          {loadingEntries ? (
-            <View style={styles.placeholderContainer}>
-              <ActivityIndicator size="large" color={colors.brandPrimary} />
-              <Text style={[styles.placeholderText, {marginTop: spacing.md}]}>Loading entries...</Text>
-            </View>
-          ) : selectedDateEntries.length === 0 ? (
-            <View style={styles.placeholderContainer}>
-              <Text style={styles.placeholderText}>
-                {showingSearchResults && !searching
-                  ? 'Nothing surfaced for that question. Try different words, or keep writing — the longer you write, the more your journal can answer.'
-                  : selectedDate
-                  ? 'No entries found for this date.'
-                  : 'Tap a teal day on the calendar, or ask your journal anything.'}
-              </Text>
-            </View>
-          ) : (
-            selectedDateEntries.map(entry => (
-              <PastEntryCard
-                key={entry.id}
-                entry={{
-                  ...entry,
-                  date: new Date(entry.date),
-                }}
-                onEdit={handleEdit}
-                onDelete={handleDelete}
-              />
-            ))
           )}
         </View>
 
-        {/* Edit Modal */}
-        <Modal
-          visible={editModalVisible}
-          animationType="slide"
-          transparent={false}
-          onRequestClose={() => setEditModalVisible(false)}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Edit Entry</Text>
-              <TouchableOpacity onPress={() => setEditModalVisible(false)}>
-                <Text style={styles.modalCloseButton}>×</Text>
+        {showingSearchResults ? (
+          /* ─── Search results take the calendar's place until cleared ─── */
+          <View style={styles.section}>
+            {searching ? (
+              <View style={styles.quietState}>
+                <ActivityIndicator size="small" color={colors.brandPrimary} />
+                <Text style={[styles.quietText, {marginTop: spacing.sm}]}>Reading your journal...</Text>
+              </View>
+            ) : searchError ? (
+              <Text style={styles.quietText}>{searchError}</Text>
+            ) : searchResults.length === 0 ? (
+              <Text style={styles.quietText}>
+                Nothing surfaced for that question. Try other words. The longer you write, the more your
+                journal can answer.
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.resultsHeader}>
+                  Found {searchResults.length} {searchResults.length === 1 ? 'entry' : 'entries'}
+                </Text>
+                {searchResults.map(entry => (
+                  <PastEntryCard
+                    key={entry.id}
+                    entry={{...entry, date: new Date(entry.date)}}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                  />
+                ))}
+              </>
+            )}
+            {!searching && (
+              <TouchableOpacity onPress={clearSearch} style={styles.backLink} accessibilityRole="button">
+                <Text style={styles.backLinkText}>Back to your calendar</Text>
               </TouchableOpacity>
-            </View>
-            <TextInput
-              style={styles.modalTextInput}
-              value={editText}
-              onChangeText={setEditText}
-              multiline
-              textAlignVertical="top"
-              placeholder="Edit your journal entry..."
-              placeholderTextColor={colors.fontMuted}
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <IWButton voice="gray" title="Cancel" onPress={() => setEditModalVisible(false)} style={styles.modalButton} />
-              <IWButton title="Save" onPress={handleSaveEdit} style={styles.modalButton} />
-            </View>
+            )}
           </View>
-        </Modal>
+        ) : (
+          <>
+            {/* ─── b. Calendar: air, a ring for days with entries, a disc for today ─── */}
+            <CoachHint markId="calendar" text="Ringed days hold your words. Tap one." />
+            <View style={styles.section}>
+              <View style={styles.calendarNav}>
+                <TouchableOpacity
+                  style={styles.calNavButton}
+                  onPress={() => changeMonth(-1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous month">
+                  <ChevronLeftIcon color={colors.brandPrimary} size={22} />
+                </TouchableOpacity>
+                <Text style={styles.monthHeading}>
+                  {monthName} {displayedYear}
+                </Text>
+                <TouchableOpacity
+                  style={styles.calNavButton}
+                  onPress={() => changeMonth(1)}
+                  accessibilityRole="button"
+                  accessibilityLabel="Next month">
+                  <ChevronRightIcon color={colors.brandPrimary} size={22} />
+                </TouchableOpacity>
+              </View>
 
-        {/* Period Insights Modal */}
-        <Modal
-          visible={insightsModalVisible}
-          animationType="slide"
-          transparent={false}
-          onRequestClose={() => setInsightsModalVisible(false)}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>{insightsPeriod}-Day Insights</Text>
-              <TouchableOpacity onPress={() => setInsightsModalVisible(false)}>
-                <Text style={styles.modalCloseButton}>×</Text>
-              </TouchableOpacity>
+              {/* Day-of-week header */}
+              <View style={styles.calendarRow}>
+                {DAYS_OF_WEEK.map((day, i) => (
+                  <View key={i} style={styles.calendarHeaderCell}>
+                    <Text style={styles.calendarHeaderText}>{day}</Text>
+                  </View>
+                ))}
+              </View>
+
+              {/* Date rows */}
+              {weeks.map((week, weekIndex) => (
+                <View key={weekIndex} style={styles.calendarRow}>
+                  {week.map((day, dayIndex) => {
+                    if (day === null) {
+                      return <View key={dayIndex} style={styles.calendarCell} />;
+                    }
+                    const hasEntry = entryDates.has(day.toString());
+                    const isToday = isCurrentMonth && day === today.getDate();
+                    const isSelected = day === selectedDay;
+
+                    return (
+                      <View key={dayIndex} style={styles.calendarCell}>
+                        <View style={[styles.calHalo, isSelected && styles.calHaloOn]}>
+                          <TouchableOpacity
+                            style={[styles.calDay, hasEntry && styles.calDayEntry, isToday && styles.calDayToday]}
+                            onPress={() => {
+                              Keyboard.dismiss();
+                              handleDateClick(day);
+                            }}
+                            accessibilityRole="button"
+                            accessibilityState={{selected: isSelected}}
+                            accessibilityLabel={`${monthName} ${day}${isToday ? ', today' : ''}${
+                              hasEntry ? ', has entries' : ''
+                            }`}>
+                            <Text style={[styles.calDayText, isToday && styles.calDayTextToday]}>{day}</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
             </View>
-            <Text style={styles.insightsWho}>SOPHY</Text>
-            <ScrollView style={styles.insightsScrollView}>
-              <Text style={styles.insightsContent}>{insightsContent}</Text>
-            </ScrollView>
-            <View style={styles.insightsFooter}>
-              <IWButton title="Close" onPress={() => setInsightsModalVisible(false)} />
+
+            {/* ─── c. The selected day's entries ─── */}
+            <View style={styles.section}>
+              {loadingEntries ? (
+                <View style={styles.quietState}>
+                  <ActivityIndicator size="small" color={colors.brandPrimary} />
+                </View>
+              ) : dayEntries.length === 0 ? (
+                <Text style={styles.quietText}>{emptyDayText}</Text>
+              ) : (
+                dayEntries.map(entry => (
+                  <PastEntryCard
+                    key={entry.id}
+                    entry={{...entry, date: new Date(entry.date)}}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    defaultExpanded={dayEntries.length === 1}
+                  />
+                ))
+              )}
             </View>
-          </View>
-        </Modal>
+          </>
+        )}
+
+        {/* ─── d. Your month: Sophy's read, her color ─── */}
+        <View style={[styles.section, styles.monthCard]}>
+          <Pressable
+            style={styles.monthHead}
+            onPress={handleMonthPress}
+            accessibilityRole="button"
+            accessibilityState={{expanded: monthOpen, busy: !!monthLoading}}
+            accessibilityLabel={`${monthTitle}. ${monthSubtitle}${!isPremium && !subscriptionLoading ? ' Plus.' : ''}`}>
+            <SophyOrb size={24} />
+            <View style={styles.monthTxt}>
+              <View style={styles.monthTitleRow}>
+                <Text style={styles.monthTitle}>{monthTitle}</Text>
+                {!isPremium && !subscriptionLoading && (
+                  <View style={styles.plusTag}>
+                    <Text style={styles.plusTagText}>PLUS</Text>
+                  </View>
+                )}
+              </View>
+              <Text style={styles.monthSub}>{monthSubtitle}</Text>
+            </View>
+            {monthLoading ? (
+              <ActivityIndicator size="small" color={colors.sophyAccent} />
+            ) : (
+              <View style={monthOpen ? styles.chevronOpen : undefined}>
+                <ChevronRightIcon color={colors.fontMuted} size={18} />
+              </View>
+            )}
+          </Pressable>
+
+          {monthOpen && (shownInsight || monthNote) && (
+            <View style={styles.monthBody}>
+              {shownInsight ? (
+                <Text style={styles.monthInsight}>{shownInsight.text}</Text>
+              ) : (
+                <Text style={styles.monthNote}>{monthNote}</Text>
+              )}
+              {!shownInsight && monthNoteIsError && (
+                <View style={styles.monthActions}>
+                  <IWButton
+                    voice="sophy"
+                    small
+                    title="Try again"
+                    onPress={() => runInsight(monthView)}
+                    disabled={!!monthLoading}
+                  />
+                </View>
+              )}
+              {showPeriodToggle && (
+                <View style={styles.monthActions}>
+                  <IWButton
+                    voice="sophy"
+                    small
+                    title={monthView === '30' ? 'Just this week' : 'Back to your month'}
+                    onPress={() => runInsight(monthView === '30' ? '7' : '30')}
+                    disabled={!!monthLoading}
+                  />
+                </View>
+              )}
+            </View>
+          )}
+        </View>
+
+        {/* Depth line: a fact, not a grade */}
+        {depthLine ? <Text style={styles.depthLine}>{depthLine}</Text> : null}
       </ScrollView>
+
+      {/* Edit Modal */}
+      <Modal
+        visible={editModalVisible}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setEditModalVisible(false)}>
+        <KeyboardAvoidingView
+          style={[styles.modalContainer, {paddingTop: insets.top + spacing.base, paddingBottom: insets.bottom + spacing.base}]}
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Edit entry</Text>
+            <TouchableOpacity
+              onPress={() => setEditModalVisible(false)}
+              hitSlop={{top: 12, bottom: 12, left: 12, right: 12}}
+              accessibilityRole="button"
+              accessibilityLabel="Close">
+              <CloseIcon color={colors.fontSecondary} size={22} />
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            style={styles.modalTextInput}
+            value={editText}
+            onChangeText={setEditText}
+            multiline
+            textAlignVertical="top"
+            placeholder="Your entry"
+            placeholderTextColor={colors.fontMuted}
+            autoFocus
+          />
+          <View style={styles.modalActions}>
+            <IWButton voice="gray" title="Cancel" onPress={() => setEditModalVisible(false)} style={styles.modalButton} />
+            <IWButton title="Save" onPress={handleSaveEdit} style={styles.modalButton} />
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      <PaywallModal visible={showPaywall} onClose={closePaywall} />
     </View>
   );
 };
@@ -783,150 +954,70 @@ const createStyles = (colors: ThemeColors) =>
       backgroundColor: colors.bgPrimary,
     },
     content: {
-      padding: spacing.lg,
+      paddingHorizontal: spacing.lg,
+      paddingTop: spacing.lg,
       paddingBottom: spacing.xxl,
     },
+    section: {
+      marginBottom: spacing.xl,
+    },
 
-    // ── Identity bar (matches JournalScreen) ──
-    identityBar: {
+    // ── Ask your journal (mockup .search) ──
+    searchField: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingHorizontal: spacing.lg,
-      paddingBottom: spacing.sm,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderLight,
-      backgroundColor: colors.bgPrimary,
-    },
-    wordmark: {
-      fontFamily: fontFamily.header,
-      fontSize: fontSize.xl,
-      color: colors.fontMain,
-      letterSpacing: 0.3,
-    },
-    wordmarkAccent: {
-      color: colors.brandPrimary,
-    },
-    identityRight: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-    },
-    settingsLink: {
-      fontFamily: fontFamily.button,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
-    },
-
-    screenTitle: {
-      fontFamily: fontFamily.header,
-      fontSize: fontSize.display,
-      color: colors.fontMain,
-      marginBottom: spacing.sm,
-    },
-
-    // ── Compounding surfaces ──
-    depthLine: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
-      marginBottom: spacing.md,
-    },
-    anniversaryCard: {
-      backgroundColor: colors.bgCard,
-      borderLeftWidth: 4,
-      borderLeftColor: colors.sophyLight,
-      borderTopRightRadius: borderRadius.md,
-      borderBottomRightRadius: borderRadius.md,
-      padding: spacing.base,
-      marginBottom: spacing.lg,
-    },
-    anniversaryLabel: {
-      fontFamily: fontFamily.bodyBold,
-      fontSize: fontSize.sm,
-      color: colors.brandPrimary,
-      marginBottom: spacing.xs,
-    },
-    anniversaryTitle: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
-      color: colors.fontSecondary,
-      marginBottom: spacing.xs,
-    },
-    anniversarySnippet: {
-      fontFamily: fontFamily.serif,
-      fontSize: fontSize.base,
-      color: colors.fontMain,
-      lineHeight: fontSize.base * 1.5,
-    },
-    anniversaryMore: {
-      fontFamily: fontFamily.button,
-      fontSize: fontSize.xs,
-      color: colors.fontSecondary,
-      textDecorationLine: 'underline',
-      marginTop: spacing.sm,
-    },
-
-    // ── Cards / sections ──
-    sectionCard: {
-      marginBottom: spacing.lg,
-    },
-    sectionHeader: {
-      fontFamily: fontFamily.header,
-      fontSize: fontSize.xl,
-      color: colors.fontMain,
-      textAlign: 'center',
-      marginBottom: spacing.md,
-    },
-
-    // ── Search ──
-    searchInput: {
-      fontFamily: fontFamily.serif,
-      backgroundColor: colors.bgCard,
+      gap: 10,
+      minHeight: 50,
+      paddingHorizontal: 14,
+      borderRadius: 14,
       borderWidth: 1,
       borderColor: colors.borderMedium,
-      borderRadius: borderRadius.md,
-      padding: spacing.md,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
-      marginBottom: spacing.md,
+      backgroundColor: colors.bgCard,
     },
-    searchButtonRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
+    searchFieldFocused: {
+      borderColor: colors.brandPrimary,
     },
-    searchButton: {
+    searchInput: {
       flex: 1,
-    },
-    examplesLabel: {
       fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontMuted,
-      textAlign: 'center',
-      marginTop: spacing.md,
-      marginBottom: spacing.sm,
+      fontSize: 16,
+      color: colors.fontMain,
+      paddingVertical: 12,
+    },
+    askLink: {
+      fontFamily: fontFamily.buttonBold,
+      fontSize: 15,
+      color: colors.brandPrimary,
     },
     examplesRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      justifyContent: 'center',
       gap: spacing.sm,
+      marginTop: spacing.md,
     },
-    examplesHint: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
-      color: colors.fontMuted,
-      fontStyle: 'italic',
-      textAlign: 'center',
+    resultsHeader: {
+      fontFamily: fontFamily.button,
+      fontSize: 15,
+      color: colors.fontSecondary,
+      marginBottom: spacing.sm,
+    },
+    backLink: {
+      alignSelf: 'center',
+      paddingVertical: spacing.md,
       marginTop: spacing.sm,
     },
+    backLinkText: {
+      fontFamily: fontFamily.buttonBold,
+      fontSize: 15,
+      color: colors.brandPrimary,
+    },
 
-    // ── Calendar: air, discs, one quiet ring ──
+    // ── Calendar: air, a ring for days with entries, a disc for today ──
     calendarNav: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginBottom: spacing.md,
+      marginBottom: spacing.sm,
     },
     calNavButton: {
       width: 44,
@@ -934,120 +1025,181 @@ const createStyles = (colors: ThemeColors) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    calNavChevron: {
-      fontSize: 26,
-      color: colors.brandPrimary,
-      lineHeight: 30,
-    },
     monthHeading: {
       fontFamily: fontFamily.header,
-      fontSize: fontSize.lg,
+      fontSize: 20,
       color: colors.fontMain,
     },
     calendarRow: {
       flexDirection: 'row',
     },
-    calendarCellWrap: {
+    calendarHeaderCell: {
       flex: 1,
       alignItems: 'center',
-      paddingVertical: 3,
+      paddingBottom: spacing.xs,
     },
     calendarHeaderText: {
       fontFamily: fontFamily.bodyBold,
-      fontSize: fontSize.xs,
-      letterSpacing: 1,
+      fontSize: 13,
+      letterSpacing: 0.5,
       color: colors.fontMuted,
-      paddingBottom: spacing.sm,
+    },
+    calendarCell: {
+      flex: 1,
+      height: 48,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    // Selected: a soft halo around whatever the day already is (ring, disc, or plain)
+    calHalo: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    calHaloOn: {
+      backgroundColor: colors.brandPrimaryRgba,
     },
     calDay: {
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 36,
+      height: 36,
+      borderRadius: 18,
       alignItems: 'center',
       justifyContent: 'center',
       borderWidth: 1.5,
       borderColor: 'transparent',
     },
     calDayEntry: {
-      backgroundColor: colors.btnPrimary, // deep teal disc, both themes
+      borderColor: colors.brandPrimary, // the quiet ring
     },
     calDayToday: {
-      borderColor: colors.brandSecondary, // thin bright ring, stacks with the disc
-    },
-    calDaySelected: {
-      borderColor: colors.brandSecondary,
-      backgroundColor: colors.bgMuted,
-    },
-    calDaySelectedEntry: {
-      borderColor: colors.brandSecondary,
-      backgroundColor: '#1E8A99', // selected entry day lifts (web contract)
+      backgroundColor: colors.btnPrimary, // the filled disc
+      borderColor: colors.btnPrimary,
     },
     calDayText: {
       fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
+      fontSize: 15,
+      color: colors.fontMain,
     },
-    calDayTextEntry: {
+    calDayTextToday: {
       fontFamily: fontFamily.bodyBold,
-      color: '#ffffff', // white number on the teal disc, both themes
+      color: colors.fontWhite,
     },
 
-    // ── Insights block ──
-    insightsButtonRow: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
+    // ── Quiet states ──
+    quietState: {
+      alignItems: 'center',
+      paddingVertical: spacing.lg,
     },
-
-    // ── Entries list ──
-    entriesContainer: {
-      marginTop: spacing.sm,
-    },
-    entriesHeader: {
-      fontFamily: fontFamily.header,
-      fontSize: fontSize.md,
-      color: colors.brandPrimary,
-      marginBottom: spacing.md,
-      textAlign: 'center',
-    },
-    placeholderContainer: {
-      padding: spacing.xl,
-      backgroundColor: colors.bgMuted,
-      borderRadius: borderRadius.md,
-      borderWidth: 1,
-      borderColor: colors.borderLight,
-      borderStyle: 'dashed',
-    },
-    placeholderText: {
+    quietText: {
       fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
+      fontSize: 15,
+      lineHeight: 22,
       color: colors.fontMuted,
       textAlign: 'center',
-      lineHeight: 20,
+      paddingVertical: spacing.base,
     },
 
-    // ── Modals ──
+    // ── Your month (mockup .month): coral only, never teal inside ──
+    monthCard: {
+      backgroundColor: colors.sophyTint,
+      borderColor: colors.sophyBorder,
+      borderWidth: 1,
+      borderRadius: 16,
+      paddingHorizontal: 14,
+      paddingVertical: 14,
+    },
+    monthHead: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      minHeight: 44,
+    },
+    monthTxt: {
+      flex: 1,
+      minWidth: 0,
+    },
+    monthTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    monthTitle: {
+      fontFamily: fontFamily.bodyBold,
+      fontSize: 16,
+      color: colors.fontMain,
+    },
+    plusTag: {
+      borderWidth: 1,
+      borderColor: colors.sophyAccent,
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 1,
+    },
+    plusTagText: {
+      fontFamily: fontFamily.bodyBold,
+      fontSize: 13,
+      letterSpacing: 1,
+      color: colors.sophyAccent,
+    },
+    monthSub: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      color: colors.fontMuted,
+      marginTop: 2,
+    },
+    chevronOpen: {
+      transform: [{rotate: '90deg'}],
+    },
+    monthBody: {
+      marginTop: 14,
+      paddingTop: 14,
+      borderTopWidth: 1,
+      borderTopColor: colors.sophyBorder,
+    },
+    monthInsight: {
+      fontFamily: fontFamily.serif,
+      fontSize: 17,
+      lineHeight: 26,
+      color: colors.fontMain,
+    },
+    monthNote: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.fontSecondary,
+    },
+    monthActions: {
+      flexDirection: 'row',
+      marginTop: spacing.base,
+    },
+
+    // ── Depth line: one quiet fact at the bottom ──
+    depthLine: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.fontMuted,
+      textAlign: 'center',
+    },
+
+    // ── Edit modal ──
     modalContainer: {
       flex: 1,
       backgroundColor: colors.bgPrimary,
-      padding: spacing.lg,
+      paddingHorizontal: spacing.lg,
     },
     modalHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
       marginBottom: spacing.lg,
-      paddingTop: spacing.xl,
     },
     modalTitle: {
       fontFamily: fontFamily.header,
-      fontSize: fontSize.xxl,
+      fontSize: 24,
       color: colors.fontMain,
-    },
-    modalCloseButton: {
-      fontSize: fontSize.xxxl,
-      color: colors.fontSecondary,
-      paddingHorizontal: spacing.sm,
     },
     modalTextInput: {
       fontFamily: fontFamily.serif,
@@ -1057,8 +1209,8 @@ const createStyles = (colors: ThemeColors) =>
       borderColor: colors.borderMedium,
       borderRadius: borderRadius.md,
       padding: spacing.md,
-      fontSize: fontSize.md,
-      lineHeight: fontSize.md * 1.6,
+      fontSize: 17,
+      lineHeight: 27,
       color: colors.fontMain,
       marginBottom: spacing.lg,
     },
@@ -1068,28 +1220,6 @@ const createStyles = (colors: ThemeColors) =>
     },
     modalButton: {
       flex: 1,
-    },
-    insightsWho: {
-      fontFamily: fontFamily.bodyBold,
-      fontSize: 10.5,
-      letterSpacing: 2,
-      color: colors.sophyLight,
-      marginBottom: spacing.xs,
-    },
-    insightsScrollView: {
-      flex: 1,
-    },
-    insightsContent: {
-      fontFamily: fontFamily.serif,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
-      lineHeight: fontSize.md * 1.6,
-      paddingBottom: spacing.xl,
-    },
-    insightsFooter: {
-      paddingTop: spacing.base,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderLight,
     },
   });
 

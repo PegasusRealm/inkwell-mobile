@@ -1,99 +1,91 @@
 import React from 'react';
-import {createStackNavigator} from '@react-navigation/stack';
+import {createStackNavigator, CardStyleInterpolators} from '@react-navigation/stack';
 import {createBottomTabNavigator} from '@react-navigation/bottom-tabs';
 import {useTheme} from '../theme/ThemeContext';
-import {PenIcon, StarIcon, CalendarIcon} from '../components/kit/icons';
+import {fontFamily} from '../theme';
+import {PenIcon, BookIcon, FlagIcon, PersonIcon} from '../components/kit/icons';
 import {isIPad} from '../utils/iPad';
 
-// Import screens
-import JournalScreen from '../screens/JournalScreen';
-import ManifestScreen from '../screens/ManifestScreen';
-import PastEntriesScreen from '../screens/PastEntriesScreen';
-import SettingsScreen from '../screens/SettingsScreen';
+import TodayScreen from '../screens/TodayScreen';
+import WriteScreen from '../screens/WriteScreen';
+import KeptScreen from '../screens/KeptScreen';
+import EntriesScreen from '../screens/PastEntriesScreen';
+import GoalsScreen from '../screens/ManifestScreen';
+import YouScreen from '../screens/SettingsScreen';
 import InfoScreen from '../screens/InfoScreen';
 
-// Import types
 import type {RootStackParamList, MainTabParamList} from './types';
 
 const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
-// v2 tab icons (web SVG paths, 2026-07-04) — replaced the emoji labels.
-// The old TabIconWithBadge (unread coach replies + tierConnect badge) died
-// here too: Connect retired, the hook was already an inert stub.
-
-// Main bottom tab navigator
+// v2.0 (2026-10-01): four tabs, one job per screen. Every tab draws its own slim
+// identity bar, so the navigator header stays off everywhere.
 function MainTabs() {
   const {colors} = useTheme();
 
   return (
     <Tab.Navigator
       screenOptions={{
-        headerStyle: {
-          backgroundColor: colors.brandPrimary,
-        },
-        headerTintColor: colors.fontWhite,
-        headerTitleStyle: {
-          fontWeight: '600',
-        },
+        headerShown: false,
         tabBarActiveTintColor: colors.brandPrimary,
         tabBarInactiveTintColor: colors.fontMuted,
+        tabBarLabelStyle: {fontFamily: fontFamily.bodyBold, fontSize: 13},
         tabBarStyle: {
-          height: isIPad() ? 70 : 60,
+          height: isIPad() ? 72 : 62,
+          paddingTop: 6,
           paddingBottom: isIPad() ? 12 : 8,
-          backgroundColor: colors.bgCard,
+          backgroundColor: colors.bgPrimary,
           borderTopColor: colors.borderLight,
         },
       }}>
       <Tab.Screen
-        name="Journal"
-        component={JournalScreen}
-        options={{
-          title: 'Journal',
-          tabBarIcon: ({color}) => <PenIcon color={color} />,
-        }}
+        name="Today"
+        component={TodayScreen}
+        options={{title: 'Today', tabBarIcon: ({color}) => <PenIcon color={color} strokeWidth={1.9} />}}
       />
       <Tab.Screen
-        name="Manifest"
-        component={ManifestScreen}
-        options={{
-          title: 'Goals',
-          tabBarIcon: ({color}) => <StarIcon color={color} />,
-        }}
+        name="Entries"
+        component={EntriesScreen}
+        options={{title: 'Entries', tabBarIcon: ({color}) => <BookIcon color={color} />}}
       />
       <Tab.Screen
-        name="PastEntries"
-        component={PastEntriesScreen}
-        options={{
-          title: 'Entries',
-          tabBarIcon: ({color}) => <CalendarIcon color={color} />,
-        }}
+        name="Goals"
+        component={GoalsScreen}
+        options={{title: 'Goals', tabBarIcon: ({color}) => <FlagIcon color={color} />}}
+      />
+      <Tab.Screen
+        name="You"
+        component={YouScreen}
+        options={{title: 'You', tabBarIcon: ({color}) => <PersonIcon color={color} />}}
       />
     </Tab.Navigator>
   );
 }
 
-// Root stack navigator (includes tabs and modal screens)
 export default function RootNavigator() {
   const {colors} = useTheme();
-  
+
   return (
-    <Stack.Navigator
-      screenOptions={{
-        headerShown: false,
-      }}>
+    <Stack.Navigator screenOptions={{headerShown: false}}>
       <Stack.Screen name="MainTabs" component={MainTabs} />
+      {/* Write takes the whole screen. No tabs, no swipe-to-dismiss mid-sentence. */}
       <Stack.Screen
-        name="Settings"
-        component={SettingsScreen}
+        name="Write"
+        component={WriteScreen}
         options={{
-          headerShown: true,
-          presentation: 'modal',
-          title: 'Settings',
-          headerStyle: {
-            backgroundColor: colors.brandPrimary,
-          },
-          headerTintColor: colors.fontWhite,
+          gestureEnabled: false,
+          cardStyleInterpolator: CardStyleInterpolators.forVerticalIOS,
+        }}
+      />
+      {/* Kept pops up over Today after a save. */}
+      <Stack.Screen
+        name="Kept"
+        component={KeptScreen}
+        options={{
+          presentation: 'transparentModal',
+          gestureEnabled: false,
+          cardStyleInterpolator: CardStyleInterpolators.forFadeFromBottomAndroid,
         }}
       />
       <Stack.Screen
@@ -102,11 +94,10 @@ export default function RootNavigator() {
         options={{
           headerShown: true,
           presentation: 'modal',
-          title: 'Help & Info',
-          headerStyle: {
-            backgroundColor: colors.brandPrimary,
-          },
-          headerTintColor: colors.fontWhite,
+          title: 'Help and About',
+          headerStyle: {backgroundColor: colors.bgPrimary},
+          headerTintColor: colors.fontMain,
+          headerTitleStyle: {fontFamily: fontFamily.bodyBold},
         }}
       />
     </Stack.Navigator>

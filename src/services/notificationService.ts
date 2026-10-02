@@ -1,7 +1,7 @@
 import messaging from '@react-native-firebase/messaging';
 import firestore from '@react-native-firebase/firestore';
 import {Platform, PermissionsAndroid, Linking, Alert} from 'react-native';
-import { navigateToPastEntries } from './navigationService';
+import { navigateToTab, navigateToWrite } from './navigationService';
 
 export interface PushNotificationPreferences {
   enabled: boolean;
@@ -376,20 +376,15 @@ class NotificationService {
       const body = remoteMessage.notification?.body || '';
       const type = remoteMessage.data?.type;
       
-      if (type === 'coach_reply') {
-        // Show alert with option to view
-        Alert.alert(
-          title,
-          body,
-          [
-            { text: 'Later', style: 'cancel' },
-            { text: 'View', onPress: () => navigateToPastEntries() },
-          ],
-          { cancelable: true }
-        );
+      // v2.0: every notice can be dismissed, and "Open" goes where the notice points.
+      const target = this.targetFor(remoteMessage?.data);
+      if (target) {
+        Alert.alert(title, body, [
+          {text: 'Later', style: 'cancel'},
+          {text: 'Open', onPress: () => this.handleNotificationNavigation(remoteMessage)},
+        ], {cancelable: true});
       } else {
-        // For other notifications, just show a simple alert
-        Alert.alert(title, body);
+        Alert.alert(title, body, [{text: 'OK'}], {cancelable: true});
       }
     });
 
@@ -411,21 +406,31 @@ class NotificationService {
       });
   }
 
+  /**
+   * v2.0 (2026-10-01): where each notification type lands. The backend sends
+   * 'journal_prompt' / 'gratitude_prompt' (data.screen 'Journal'), 'wish_milestone',
+   * 'weekly_insights'. Older builds only matched 'coach_reply' and 'milestone', so
+   * milestone taps did nothing. Unknown types open Today.
+   */
+  targetFor(data: any): {tab?: 'Today' | 'Entries' | 'Goals' | 'You'; write?: {mode: 'free' | 'gratitude'}} | null {
+    const type = data?.type;
+    const screen = data?.screen;
+    if (type === 'gratitude_prompt') return {write: {mode: 'gratitude'}};
+    if (type === 'journal_prompt' || type === 'daily_prompt') return {tab: 'Today'};
+    if (type === 'wish_milestone' || type === 'milestone') return {tab: 'Goals'};
+    if (type === 'weekly_insights' || type === 'monthly_insights' || type === 'coach_reply') return {tab: 'Entries'};
+    if (screen === 'Journal' || screen === 'Today') return {tab: 'Today'};
+    if (screen === 'Manifest' || screen === 'Goals') return {tab: 'Goals'};
+    if (screen === 'PastEntries' || screen === 'Entries') return {tab: 'Entries'};
+    return type || screen ? {tab: 'Today'} : null;
+  }
+
   handleNotificationNavigation(remoteMessage: any) {
-    // Handle navigation based on notification type
-    console.log('Navigate to:', remoteMessage.data);
-    
-    const type = remoteMessage.data?.type;
-    
-    if (type === 'coach_reply') {
-      // Navigate to Past Entries to see the coach reply
-      navigateToPastEntries();
-    } else if (type === 'milestone') {
-      // Could navigate to Manifest screen
-      // For now, just go to PastEntries
-      navigateToPastEntries();
-    }
-    // Add more notification types as needed
+    const target = this.targetFor(remoteMessage?.data);
+    if (!target) return;
+    // navigationService waits until the navigator is mounted (cold start from a tap)
+    if (target.write) navigateToWrite(target.write);
+    else if (target.tab) navigateToTab(target.tab);
   }
 
   async unsubscribe(userId: string) {

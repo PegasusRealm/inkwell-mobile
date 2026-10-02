@@ -162,11 +162,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         setTimeout(() => {
           Alert.alert(
             'Welcome to InkWell',
-            'Your account is ready. Head to Settings to add your name and phone number for SMS gratitude reminders.',
-            [
-              { text: 'Maybe Later', style: 'cancel' },
-              { text: 'Go to Settings', style: 'default' }
-            ]
+            'Your account is ready. Start with one line on Today. You can add your name anytime in the You tab.',
+            [{ text: 'OK' }]
           );
         }, 500);
       }
@@ -284,11 +281,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         setTimeout(() => {
           Alert.alert(
             'Welcome to InkWell',
-            'Your account is ready. Head to Settings to add your name and phone number for SMS gratitude reminders.',
-            [
-              { text: 'Maybe Later', style: 'cancel' },
-              { text: 'Go to Settings', style: 'default' }
-            ]
+            'Your account is ready. Start with one line on Today. You can add your name anytime in the You tab.',
+            [{ text: 'OK' }]
           );
         }, 500);
       }

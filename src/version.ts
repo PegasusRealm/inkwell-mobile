@@ -16,10 +16,12 @@ import {Platform} from 'react-native';
 // v2 release cut — day 185 of 2026 (2026-07-04), matches web v26.185.1
 // 26.185.2 (2026-10-01): log-in security/billing hotfix, no feature change. The App Store needs a
 // new version string for a released version, so the hotfix bumps the third segment.
-export const APP_VERSION = '26.185.2';
+// 26.274.1 (2026-10-01): InkWell 2.0 phone app (Today / Entries / Goals / You, full-screen Write,
+// Kept, heaviness ratings, Plus preview). Phone-only cut; web stays at its own version.
+export const APP_VERSION = '26.274.1';
 
 export const BUILD_NUMBER = Platform.select({
-  ios: '82',
-  android: '86',
+  ios: '83',
+  android: '87',
   default: '0',
 });

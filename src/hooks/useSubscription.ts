@@ -1,174 +1,148 @@
 /**
  * useSubscription Hook
- * Easy access to subscription status throughout the app
- * 
- * FIXED: 2026-01-06 - Removed recursive initialization loop
+ * Easy access to subscription status throughout the app.
+ *
+ * v2.0 (2026-10-01): status is SHARED. Before, every screen kept its own copy, so a
+ * purchase on one tab didn't show on another until the app came back to the
+ * foreground. Now one store holds the status and every hook listens to it.
+ * The paywall open/close state stays per screen (each screen mounts its own modal).
  */
 
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { AppState, AppStateStatus } from 'react-native';
-import SubscriptionService, {
-  SubscriptionStatus,
-  SubscriptionTier,
-} from '../services/SubscriptionService';
+import {useState, useEffect, useCallback} from 'react';
+import {AppState, AppStateStatus} from 'react-native';
+import SubscriptionService, {SubscriptionStatus} from '../services/SubscriptionService';
 import auth from '@react-native-firebase/auth';
 
-export const useSubscription = () => {
-  const [status, setStatus] = useState<SubscriptionStatus>({
-    tier: 'free',
-    isActive: false,
-    willRenew: false,
-  });
-  const [loading, setLoading] = useState(true); // Start true while initializing
-  const [showPaywall, setShowPaywall] = useState(false);
-  
-  // Use refs to prevent re-initialization and infinite loops
-  const initializedRef = useRef(false);
-  const initializingRef = useRef(false);
+type Feature = 'sms' | 'ai' | 'practitioner' | 'export' | 'fileUpload';
 
-  // Initialize RevenueCat - called once
-  const ensureInitialized = useCallback(async (): Promise<boolean> => {
-    // Already initialized
-    if (initializedRef.current) {
-      return true;
-    }
-    
-    // Already in progress
-    if (initializingRef.current) {
-      console.log('🔄 useSubscription: init already in progress');
-      return false;
-    }
-    
-    const user = auth().currentUser;
-    if (!user) {
-      console.warn('Cannot initialize RevenueCat: no user authenticated');
-      return false;
-    }
+const FREE: SubscriptionStatus = {tier: 'free', isActive: false, willRenew: false};
 
-    initializingRef.current = true;
-    console.log('🔵 useSubscription: Starting initialization...');
+// ─── the shared store ───
+let shared: SubscriptionStatus = FREE;
+let loading = true;
+let initializedFor: string | null = null; // uid RevenueCat was set up for
+let initPromise: Promise<boolean> | null = null;
+const listeners = new Set<() => void>();
+const publish = () => listeners.forEach(l => l());
 
+async function ensureInitializedShared(): Promise<boolean> {
+  const user = auth().currentUser;
+  if (!user) {
+    loading = false;
+    publish();
+    return false;
+  }
+  if (initializedFor === user.uid) return true;
+  if (initPromise) return initPromise;
+  // A different account than last time: nothing of the old account's status carries over
+  if (initializedFor !== null) {
+    initializedFor = null;
+    shared = FREE;
+  }
+  initPromise = (async () => {
     try {
-      setLoading(true);
+      loading = true;
+      publish();
       await SubscriptionService.initialize(user.uid);
-      initializedRef.current = true;
-      console.log('✅ useSubscription: Initialized successfully');
-      
-      // Fetch initial status (don't call ensureInitialized again!)
-      const currentStatus = await SubscriptionService.getSubscriptionStatus();
-      setStatus(currentStatus);
-      
+      initializedFor = user.uid;
+      shared = await SubscriptionService.getSubscriptionStatus();
       return true;
     } catch (error) {
       console.error('Failed to initialize subscription:', error);
-      setStatus({
-        tier: 'free',
-        isActive: false,
-        willRenew: false,
-      });
+      shared = FREE;
       return false;
     } finally {
-      setLoading(false);
-      initializingRef.current = false;
+      loading = false;
+      initPromise = null;
+      publish();
     }
+  })();
+  return initPromise;
+}
+
+/** On sign-out: drop the status and sign RevenueCat out, so the next account starts clean. */
+export async function resetSubscriptionOnSignOut(): Promise<void> {
+  initializedFor = null;
+  shared = FREE;
+  loading = false;
+  publish();
+  await SubscriptionService.logout();
+}
+
+/** Re-read the status (after a purchase, restore, or return to the app). */
+export async function refreshSubscriptionStatus(): Promise<void> {
+  const ok = await ensureInitializedShared();
+  if (!ok) return;
+  try {
+    shared = await SubscriptionService.getSubscriptionStatus();
+    publish();
+  } catch (error) {
+    console.error('Failed to refresh subscription status:', error);
+  }
+}
+
+// One app-state listener for the whole app, not one per screen.
+let appStateHooked = false;
+function hookAppState() {
+  if (appStateHooked) return;
+  appStateHooked = true;
+  AppState.addEventListener('change', (next: AppStateStatus) => {
+    if (next === 'active' && initializedFor) refreshSubscriptionStatus();
+  });
+}
+
+export const useSubscription = () => {
+  const [, force] = useState(0);
+  const [showPaywall, setShowPaywall] = useState(false);
+
+  useEffect(() => {
+    const l = () => force(n => n + 1);
+    listeners.add(l);
+    hookAppState();
+    ensureInitializedShared();
+    return () => {
+      listeners.delete(l);
+    };
   }, []);
 
-  // Refresh status - assumes already initialized
-  const refreshStatus = useCallback(async () => {
-    // Only refresh if already initialized
-    if (!initializedRef.current) {
-      console.log('⏸️ useSubscription: Skipping refresh, not initialized');
-      return;
-    }
-    
-    try {
-      const currentStatus = await SubscriptionService.getSubscriptionStatus();
-      setStatus(currentStatus);
-    } catch (error) {
-      console.error('Failed to refresh subscription status:', error);
-    }
-  }, []);
+  const ensureInitialized = useCallback(() => ensureInitializedShared(), []);
+  const refreshStatus = useCallback(() => refreshSubscriptionStatus(), []);
 
-  // Handle app state changes
-  useEffect(() => {
-    const handleAppStateChange = async (nextAppState: AppStateStatus) => {
-      if (nextAppState === 'active' && initializedRef.current) {
-        await refreshStatus();
-      }
-    };
-
-    const subscription = AppState.addEventListener('change', handleAppStateChange);
-    return () => subscription.remove();
-  }, [refreshStatus]);
-
-  // AUTO-INITIALIZE on mount when user is authenticated
-  // This ensures subscription tier is fetched from Firestore immediately
-  useEffect(() => {
-    const initOnMount = async () => {
-      const user = auth().currentUser;
-      if (user && !initializedRef.current && !initializingRef.current) {
-        console.log('🔵 useSubscription: Auto-initializing on mount...');
-        await ensureInitialized();
-      } else if (!user) {
-        // No user yet, set loading false
-        setLoading(false);
-      }
-    };
-    
-    initOnMount();
-  }, [ensureInitialized]);
-
-  const hasFeatureAccess = useCallback(async (
-    feature: 'sms' | 'ai' | 'practitioner' | 'export' | 'fileUpload'
-  ): Promise<boolean> => {
-    await ensureInitialized();
+  const hasFeatureAccess = useCallback(async (feature: Feature): Promise<boolean> => {
+    await ensureInitializedShared();
     return await SubscriptionService.hasFeatureAccess(feature);
-  }, [ensureInitialized]);
-
-  const checkFeatureAndShowPaywall = useCallback(async (
-    feature: 'sms' | 'ai' | 'practitioner' | 'export' | 'fileUpload'
-  ): Promise<boolean> => {
-    const hasAccess = await hasFeatureAccess(feature);
-    if (!hasAccess) {
-      setShowPaywall(true);
-    }
-    return hasAccess;
-  }, [hasFeatureAccess]);
-
-  const isPremium = (): boolean => {
-    return status.tier === 'plus' || status.tier === 'connect';
-  };
-
-  const isConnect = (): boolean => {
-    return status.tier === 'connect';
-  };
-
-  const openPaywall = useCallback(async () => {
-    // Don't need to initialize here - PaywallModal handles its own init
-    setShowPaywall(true);
   }, []);
 
-  const closePaywall = useCallback(() => {
-    setShowPaywall(false);
-  }, []);
+  const checkFeatureAndShowPaywall = useCallback(
+    async (feature: Feature): Promise<boolean> => {
+      const hasAccess = await hasFeatureAccess(feature);
+      if (!hasAccess) setShowPaywall(true);
+      return hasAccess;
+    },
+    [hasFeatureAccess],
+  );
 
+  const openPaywall = useCallback(() => setShowPaywall(true), []);
+  const closePaywall = useCallback(() => setShowPaywall(false), []);
+
+  const status = shared;
   return {
     // Status
     tier: status.tier,
     isActive: status.isActive,
-    isPremium: isPremium(),
-    isConnect: isConnect(),
+    isPremium: status.tier === 'plus' || status.tier === 'connect',
+    isConnect: status.tier === 'connect',
     expirationDate: status.expirationDate,
     willRenew: status.willRenew,
     loading,
-    
+
     // Actions
     refreshStatus,
     hasFeatureAccess,
     checkFeatureAndShowPaywall,
     ensureInitialized,
-    
-    // Paywall
+
+    // Paywall (per screen)
     showPaywall,
     openPaywall,
     closePaywall,

@@ -15,9 +15,9 @@ export type FirstStepKey = 'write' | 'prompt' | 'save' | 'entries' | 'wish';
 export const FIRST_STEPS: Array<[FirstStepKey, string, string]> = [
   ['write', 'Write a line', 'One sentence counts.'],
   ['prompt', 'Ask Sophy for a prompt', 'She reads nothing until you ask.'],
-  ['save', 'Save your first entry', 'That is the whole habit, right there.'],
-  ['entries', 'Find it in Entries', 'Everything you write compounds here.'],
-  ['wish', 'Plant a WISH', 'A goal with a plan attached.'],
+  ['save', 'Keep your first entry', 'That is the whole habit, right there.'],
+  ['entries', 'Find it in Entries', 'Everything you write builds up here.'],
+  ['wish', 'Set a goal', 'Give it a plan you can follow.'],
 ];
 
 export interface FirstStepsState {

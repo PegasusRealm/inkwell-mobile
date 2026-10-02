@@ -17,9 +17,13 @@ import firestore from '@react-native-firebase/firestore';
 import auth from '@react-native-firebase/auth';
 import { Platform } from 'react-native';
 
-// RevenueCat API Keys (from https://app.revenuecat.com)
-// iOS Public Key - use for client-side iOS app
-const REVENUECAT_API_KEY = 'appl_MgoxKdevXxWONmSBnChHrgObCqn';
+// RevenueCat PUBLIC SDK keys (from https://app.revenuecat.com). Public by design: they ship
+// inside the app binary. v2.0 (2026-10-01): Android had no key, so Android could not buy Plus.
+const REVENUECAT_API_KEY = Platform.select({
+  ios: 'appl_MgoxKdevXxWONmSBnChHrgObCqn',
+  android: 'goog_yCobCFmvQHElcFiWRSGAUSHTNma',
+  default: 'appl_MgoxKdevXxWONmSBnChHrgObCqn',
+}) as string;
 
 // Offering identifiers (configured in RevenueCat dashboard)
 export const OFFERING_IDS = {
@@ -43,28 +47,31 @@ export interface AllOfferings {
 }
 
 class SubscriptionService {
-  private initialized = false;
+  private configured = false;
+  // The InkWell account RevenueCat is signed in as. v2.0: before, a second account on the
+  // same phone kept the first account's RevenueCat identity (purchases landed on the wrong user).
+  private userId: string | null = null;
 
   /**
-   * Initialize RevenueCat SDK
-   * Call this on app startup after user authentication
+   * Initialize RevenueCat for this signed-in user.
+   * Configures the SDK once per app run, then logs in (or switches) to this user.
    */
   async initialize(userId: string): Promise<void> {
-    if (this.initialized) {
-      console.log('RevenueCat already initialized');
+    if (this.configured && this.userId === userId) {
       return;
     }
 
     try {
-      // Configure RevenueCat
-      Purchases.setLogLevel(LOG_LEVEL.DEBUG); // Use VERBOSE for development
-      await Purchases.configure({ apiKey: REVENUECAT_API_KEY });
-      
-      // Set user ID for cross-platform subscription tracking
+      if (!this.configured) {
+        Purchases.setLogLevel(__DEV__ ? LOG_LEVEL.DEBUG : LOG_LEVEL.WARN);
+        await Purchases.configure({ apiKey: REVENUECAT_API_KEY });
+        this.configured = true;
+      }
+
+      // Set user ID for cross-platform subscription tracking (also switches accounts)
       await Purchases.logIn(userId);
-      
-      this.initialized = true;
-      console.log('✅ RevenueCat initialized for user:', userId);
+      this.userId = userId;
+      console.log('✅ RevenueCat ready for user:', userId);
       
       // Sync initial subscription status with Firestore
       await this.syncSubscriptionStatus();
@@ -140,8 +147,13 @@ class SubscriptionService {
       
       console.log('✅ Purchase successful!');
       
-      // Sync with Firestore
-      await this.syncSubscriptionStatus(customerInfo);
+      // Sync with Firestore. A failed sync must not report a completed purchase as failed;
+      // the next app open syncs again.
+      try {
+        await this.syncSubscriptionStatus(customerInfo);
+      } catch (syncError) {
+        console.warn('Purchase done, Firestore sync will retry:', syncError);
+      }
       
       return customerInfo;
       
@@ -438,8 +450,8 @@ class SubscriptionService {
    */
   async logout(): Promise<void> {
     try {
-      await Purchases.logOut();
-      this.initialized = false;
+      if (this.userId) await Purchases.logOut();
+      this.userId = null;
       console.log('✅ Logged out from RevenueCat');
     } catch (error) {
       console.error('❌ Failed to logout from RevenueCat:', error);

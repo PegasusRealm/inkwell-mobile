@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
   rowText: {flex: 1},
   who: {
     fontFamily: fontFamily.bodyBold,
-    fontSize: 10.5,
+    fontSize: 13,
     letterSpacing: 2,
     marginBottom: 2,
   },

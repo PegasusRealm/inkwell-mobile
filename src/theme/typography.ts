@@ -37,7 +37,7 @@ export const fontFamily = {
 
 // Font Sizes - Consistent scale
 export const fontSize = {
-  xs: 11,
+  xs: 13, // v2.0 type floor: nothing under 13
   sm: 13,
   base: 15,
   md: 16,

@@ -1,20 +1,20 @@
 /**
- * SettingsScreen — v2 rebuild (M2, 2026-07-04)
- * Structure: v2 kit (Card/IWButton/Eyebrow/Pill), web settings parity.
- * Copy: web/public/app.html voice pass, verbatim where ported.
- * LAWS: teal structure / no emojis in chrome / Reading is opt-in only /
- * Your Words card stays architecturally true, never says HIPAA /
- * Practice Summary is FREE tier, never gated.
- * Connect is dead — coaches section, invite modal, and coach-reply
- * notification rows removed (2026-07-04). Stored coachReplies pref values
- * pass through untouched (no data loss, no service-file edits).
+ * You tab (v2.0, 2026-10-01). Was the Settings modal; now a tab like the others.
+ * Order: Your look, Sophy, Reminders and emails, Practice Summary, Your words,
+ * InkWell Plus, Help right now, Help and About, Sign out.
+ * One surface: the Your look card on top, then plain rows split by hairlines.
+ * LAWS: teal is structure, coral is Sophy's only. Practice Summary and Export are FREE.
+ * The privacy lines stay architecturally true and never say HIPAA.
+ * Every Firestore read/write keeps its exact shape (web, insights and Practice
+ * Summary read these docs). The coachReplies prefs have no UI but their stored
+ * values pass through every save unchanged.
  */
-import React, {useState, useEffect, useMemo} from 'react';
+import React, {useState, useEffect, useMemo, useCallback} from 'react';
 import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
+  Pressable,
   ScrollView,
   Alert,
   TextInput,
@@ -28,24 +28,53 @@ import {
   useWindowDimensions,
   KeyboardAvoidingView,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import ReactNativeBlobUtil from 'react-native-blob-util';
 import {Picker} from '@react-native-picker/picker';
 import auth from '@react-native-firebase/auth';
 import firestore from '@react-native-firebase/firestore';
-import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {spacing, borderRadius, fontFamily} from '../theme';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import type {ThemeMode} from '../theme';
-import type {RootStackScreenProps} from '../navigation/types';
-import {iPadContentStyle, getKeyboardVerticalOffset} from '../utils/iPad';
+import type {TabScreenProps} from '../navigation/types';
+import {iPadContentStyle} from '../utils/iPad';
 import {useSubscription} from '../hooks/useSubscription';
 import {useOnboarding} from '../hooks/useOnboarding';
 import PaywallModal from '../components/PaywallModal';
+import {IdentityBar, ScreenTitle} from '../components/IdentityBar';
 import notificationService, {PushNotificationPreferences} from '../services/notificationService';
 import {FirstStepsService} from '../services/firstStepsService';
 import {APP_VERSION} from '../version';
-import {Card, IWButton, Pill, Eyebrow, Divider} from '../components/kit';
+import {Card, IWButton, Pill, Eyebrow} from '../components/kit';
+import {ChevronRightIcon, CloseIcon} from '../components/kit/icons';
 
-// App version comes from the single source of truth (src/version.ts — M3 sync)
+// Read by Today. '1' shows past entries there, '0' hides them; missing means on.
+const SHOW_MEMORIES_KEY = 'iw_show_memories';
+
+const DELETE_COPY =
+  'Your account and everything in it, including photos and files, will be deleted in 30 days. Sign in again before then to cancel.';
+
+/** Android: copy an export into Downloads/InkWell. Android 10+ only; false means use the share sheet. */
+async function saveToAndroidDownloads(name: string, path: string, mimeType: string): Promise<boolean> {
+  if (Platform.OS !== 'android' || Number(Platform.Version) < 29) return false;
+  try {
+    await ReactNativeBlobUtil.MediaCollection.copyToMediaStore(
+      {name, parentFolder: 'InkWell', mimeType} as any,
+      'Download',
+      path,
+    );
+    return true;
+  } catch (e) {
+    console.warn('Could not save to Downloads:', e);
+    return false;
+  }
+}
+
+const MANAGE_SUBSCRIPTION_URL = Platform.select({
+  ios: 'https://apps.apple.com/account/subscriptions',
+  default: 'https://play.google.com/store/account/subscriptions',
+});
 
 // Twilio-supported country codes (major regions)
 const COUNTRY_CODES = [
@@ -116,13 +145,95 @@ const TIMEZONES = [
 
 const SUMMARY_DAY_OPTIONS = [7, 30, 90] as const;
 
-export default function SettingsScreen({
-  navigation,
-}: RootStackScreenProps<'Settings'>) {
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+// ==================== One row ====================
+// The single row language for this screen: a hairline on top, a title, an optional
+// subtitle, and a switch, value or chevron on the right.
+interface RowProps {
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  onPress?: () => void;
+  chevron?: boolean;
+  danger?: boolean;
+  nested?: boolean;
+  disabled?: boolean;
+}
+
+const Row: React.FC<RowProps> = ({title, subtitle, right, onPress, chevron, danger, nested, disabled}) => {
+  const {colors} = useTheme();
+  const rs = useMemo(() => createRowStyles(colors), [colors]);
+  const body = (
+    <>
+      <View style={rs.text}>
+        <Text style={[rs.title, nested && rs.titleNested, danger && {color: colors.btnDanger}]}>{title}</Text>
+        {subtitle ? <Text style={rs.subtitle}>{subtitle}</Text> : null}
+      </View>
+      {right}
+      {chevron ? <ChevronRightIcon color={colors.brandPrimary} /> : null}
+    </>
+  );
+  if (onPress) {
+    return (
+      <Pressable
+        onPress={onPress}
+        disabled={disabled}
+        accessibilityRole="button"
+        style={({pressed}) => [rs.row, nested && rs.nested, pressed && {opacity: 0.6}]}>
+        {body}
+      </Pressable>
+    );
+  }
+  return <View style={[rs.row, nested && rs.nested]}>{body}</View>;
+};
+
+const createRowStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      minHeight: 56,
+      paddingVertical: 14,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderLight,
+    },
+    nested: {
+      marginLeft: spacing.base,
+      minHeight: 48,
+      paddingVertical: 10,
+    },
+    text: {flex: 1, minWidth: 0},
+    title: {
+      fontFamily: fontFamily.button,
+      fontSize: 16,
+      lineHeight: 22,
+      color: colors.fontMain,
+    },
+    titleNested: {fontFamily: fontFamily.body, fontSize: 15},
+    subtitle: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 21,
+      color: colors.fontMuted,
+      marginTop: 2,
+    },
+  });
+
+export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
   const user = auth().currentUser;
   const {colors, themeMode, setThemeMode, isDark} = useTheme();
   const {width: screenWidth} = useWindowDimensions();
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  // Week dots in the identity bar refresh each time You comes into view
+  const [dotsRefresh, setDotsRefresh] = useState(0);
+  useFocusEffect(
+    useCallback(() => {
+      setDotsRefresh(n => n + 1);
+    }, []),
+  );
 
   // Profile
   const [profileName, setProfileName] = useState('');
@@ -137,17 +248,17 @@ export default function SettingsScreen({
   // Account lifecycle
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [deletingAccount, setDeletingAccount] = useState(false);
-  const [crisisExpanded, setCrisisExpanded] = useState(false);
 
   // SMS notifications
   const [countryCode, setCountryCode] = useState('+1');
   const [localPhoneNumber, setLocalPhoneNumber] = useState('');
   const [, setPhoneNumber] = useState('');
   const [smsEnabled, setSmsEnabled] = useState(false);
+  const [smsEnabledStored, setSmsEnabledStored] = useState(false);
   const [smsWishMilestones, setSmsWishMilestones] = useState(true);
   const [smsDailyPrompts, setSmsDailyPrompts] = useState(false);
   const [smsGratitudePrompts, setSmsGratitudePrompts] = useState(false);
-  // Connect retired — no UI row, but the stored value passes through saves untouched
+  // No UI; the stored value passes through saves unchanged
   const [smsCoachReplies, setSmsCoachReplies] = useState(true);
   const [smsWeeklyInsights, setSmsWeeklyInsights] = useState(false);
   const [savingSms, setSavingSms] = useState(false);
@@ -160,26 +271,28 @@ export default function SettingsScreen({
   const [pushDailyPrompts, setPushDailyPrompts] = useState(true);
   const [pushGratitudePrompts, setPushGratitudePrompts] = useState(true);
   const [pushWishMilestones, setPushWishMilestones] = useState(true);
-  // Connect retired — stored value passes through untouched
+  // No UI; the stored value passes through saves unchanged
   const [pushCoachReplies, setPushCoachReplies] = useState(true);
   const [pushWeeklyInsights, setPushWeeklyInsights] = useState(false);
   const [savingPush, setSavingPush] = useState(false);
   const [pushStatus, setPushStatus] = useState('');
 
-  // Export
+  // Export (free)
   const [exporting, setExporting] = useState(false);
 
-  // Practice Summary (free tier by law)
+  // Past entries on Today (local to this phone)
+  const [showMemories, setShowMemories] = useState(true);
+
+  // Practice Summary (free)
   const [summaryDays, setSummaryDays] = useState<number>(30);
   const [sendingSummary, setSendingSummary] = useState(false);
   const [summaryStatus, setSummaryStatus] = useState('');
 
   const {
-    tier: subscriptionTier,
     isActive,
     isPremium,
     loading: subscriptionLoading,
-    openPaywall: initAndOpenPaywall,
+    openPaywall,
     checkFeatureAndShowPaywall,
     showPaywall,
     closePaywall,
@@ -193,34 +306,37 @@ export default function SettingsScreen({
     setTimeout(() => setter(''), ms);
   };
 
-  // Repointed 2026-07-04: resets the FirstSteps quest (the old welcome-tip
-  // system is retired — event-driven onboarding replaced it)
+  const switchColors = (on: boolean) => ({
+    trackColor: {false: colors.borderMedium, true: colors.brandAlt},
+    thumbColor: on ? colors.brandPrimary : colors.fontMuted,
+  });
+
+  // Resets the FirstSteps guide and its hints
   const handleResetFirstSteps = () => {
-    Alert.alert(
-      'Reset First Steps',
-      'This will bring back the first-steps guide and its hints, starting from the top.',
-      [
-        {text: 'Cancel', style: 'cancel'},
-        {
-          text: 'Reset',
-          onPress: async () => {
-            await resetOnboarding(); // legacy tip flags cleared too
-            FirstStepsService.reset();
-            Alert.alert('Done', 'First steps will be waiting on your Journal tab.');
-          },
+    Alert.alert('Show the tips again?', 'The first-steps guide and its hints come back, starting from the top.', [
+      {text: 'Cancel', style: 'cancel'},
+      {
+        text: 'Show them',
+        onPress: async () => {
+          await resetOnboarding(); // legacy tip flags cleared too
+          FirstStepsService.reset();
+          Alert.alert('Done', 'The tips will show again as you use InkWell.');
         },
-      ],
-    );
+      },
+    ]);
   };
 
-  const handleUpgradePress = async () => {
+  const handleManageSubscription = async () => {
     try {
-      if (initAndOpenPaywall) {
-        await initAndOpenPaywall();
-      }
+      await Linking.openURL(MANAGE_SUBSCRIPTION_URL);
     } catch (error) {
-      console.error('Error opening paywall:', error);
-      Alert.alert('Error', 'Unable to load subscription options. Please try again.');
+      console.error('Error opening subscription management:', error);
+      Alert.alert(
+        'Could not open subscriptions',
+        Platform.OS === 'ios'
+          ? 'You can manage it in the Settings app under your name, then Subscriptions.'
+          : 'You can manage it in the Play Store under Payments and subscriptions.',
+      );
     }
   };
 
@@ -229,6 +345,7 @@ export default function SettingsScreen({
     loadInsightsPreferences();
     loadSmsPreferences();
     loadPushPreferences();
+    loadShowMemories();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -244,6 +361,25 @@ export default function SettingsScreen({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
+
+  // ==================== Past entries on Today ====================
+  const loadShowMemories = async () => {
+    try {
+      const v = await AsyncStorage.getItem(SHOW_MEMORIES_KEY);
+      setShowMemories(v !== '0');
+    } catch (error) {
+      console.error('Error loading show-memories setting:', error);
+    }
+  };
+
+  const handleShowMemoriesToggle = async (value: boolean) => {
+    setShowMemories(value);
+    try {
+      await AsyncStorage.setItem(SHOW_MEMORIES_KEY, value ? '1' : '0');
+    } catch (error) {
+      console.error('Error saving show-memories setting:', error);
+    }
+  };
 
   // ==================== Profile ====================
   const loadProfile = async () => {
@@ -306,7 +442,7 @@ export default function SettingsScreen({
       );
     } catch (error) {
       console.error('Error saving insights preferences:', error);
-      Alert.alert('Error', 'Failed to save preferences. Please try again.');
+      Alert.alert('Not saved', 'Your email settings did not save. Please try again.');
     } finally {
       setSavingInsights(false);
     }
@@ -356,6 +492,7 @@ export default function SettingsScreen({
 
       const enabled = userData?.smsOptIn || userData?.smsPreferences?.enabled || false;
       setSmsEnabled(enabled);
+      setSmsEnabledStored(enabled);
 
       if (userData?.smsPreferences) {
         setSmsWishMilestones(userData.smsPreferences.wishMilestones !== false);
@@ -378,7 +515,7 @@ export default function SettingsScreen({
     const fullPhoneNumber = cleanLocalNumber ? `${countryCode}${cleanLocalNumber}` : '';
 
     if (smsEnabled && cleanLocalNumber && cleanLocalNumber.length < 6) {
-      Alert.alert('Invalid Phone Number', 'Please enter a valid phone number (at least 6 digits)');
+      Alert.alert('Check the number', 'Please enter a phone number with at least 6 digits.');
       return;
     }
 
@@ -398,7 +535,7 @@ export default function SettingsScreen({
             dailyPrompts: smsDailyPrompts,
             gratitudePrompts: smsGratitudePrompts,
             dailyGratitude: smsGratitudePrompts, // Web uses this name
-            coachReplies: smsCoachReplies, // passthrough, no UI (Connect retired)
+            coachReplies: smsCoachReplies, // passthrough, no UI
             weeklyInsights: smsWeeklyInsights,
             updatedAt: firestore.FieldValue.serverTimestamp(),
           },
@@ -407,10 +544,11 @@ export default function SettingsScreen({
       );
 
       setPhoneNumber(fullPhoneNumber);
+      setSmsEnabledStored(smsEnabled);
       flashStatus(setSmsStatus, 'Saved.');
     } catch (error) {
       console.error('Error saving SMS preferences:', error);
-      Alert.alert('Error', 'Failed to save SMS preferences. Please try again.');
+      Alert.alert('Not saved', 'Your text message settings did not save. Please try again.');
     } finally {
       setSavingSms(false);
     }
@@ -449,29 +587,29 @@ export default function SettingsScreen({
       await savePushPreferences(true, true);
 
       if (tokenResult.success) {
-        flashStatus(setPushStatus, 'Push notifications enabled.');
+        flashStatus(setPushStatus, 'Notifications are on.');
       } else if (tokenResult.permissionStatus === 'DENIED') {
         setPushEnabled(false);
         setPushPermissionStatus('denied');
         Alert.alert(
-          'Permission Required',
-          'Push notifications are disabled in your device settings. Would you like to open Settings to enable them?',
+          'Notifications are off for InkWell',
+          'Your phone is blocking InkWell notifications. Open Settings to allow them?',
           [
-            {text: 'Not Now', style: 'cancel'},
+            {text: 'Not now', style: 'cancel'},
             {text: 'Open Settings', onPress: () => notificationService.openSettings()},
           ],
         );
       } else {
         setPushEnabled(false);
         Alert.alert(
-          'Push Notification Error',
-          `Could not enable push notifications.\n\nError: ${tokenResult.error || 'Unknown error'}`,
+          'Could not turn on notifications',
+          `Please try again.\n\nError: ${tokenResult.error || 'Unknown error'}`,
         );
       }
     } else {
       setPushEnabled(false);
       await savePushPreferences(false, true);
-      flashStatus(setPushStatus, 'Push notifications disabled.');
+      flashStatus(setPushStatus, 'Notifications are off.');
     }
   };
 
@@ -484,7 +622,7 @@ export default function SettingsScreen({
         dailyPrompts: pushDailyPrompts,
         gratitudePrompts: pushGratitudePrompts,
         wishMilestones: pushWishMilestones,
-        coachReplies: pushCoachReplies, // passthrough, no UI (Connect retired)
+        coachReplies: pushCoachReplies, // passthrough, no UI
         weeklyInsights: pushWeeklyInsights,
       };
 
@@ -493,20 +631,20 @@ export default function SettingsScreen({
         if (success) {
           flashStatus(setPushStatus, 'Saved.');
         } else {
-          Alert.alert('Error', 'Failed to save preferences. Please try again.');
+          Alert.alert('Not saved', 'Your notification settings did not save. Please try again.');
         }
       }
     } catch (error) {
       console.error('Error saving push preferences:', error);
       if (!skipStatus) {
-        Alert.alert('Error', 'Failed to save preferences. Please try again.');
+        Alert.alert('Not saved', 'Your notification settings did not save. Please try again.');
       }
     } finally {
       setSavingPush(false);
     }
   };
 
-  // ==================== Practice Summary (free tier by law) ====================
+  // ==================== Practice Summary (free) ====================
   const handleSendPracticeSummary = async () => {
     if (!user) {
       flashStatus(setSummaryStatus, 'Sign in first.');
@@ -534,7 +672,7 @@ export default function SettingsScreen({
     }
   };
 
-  // ==================== Export ====================
+  // ==================== Export (free in 2.0) ====================
   const safeToISOString = (dateField: any): string | null => {
     if (!dateField) return null;
     if (typeof dateField.toDate === 'function') {
@@ -550,19 +688,7 @@ export default function SettingsScreen({
   };
 
   const handleExportData = async () => {
-    if (!user) return;
-
-    if (!isPremium) {
-      Alert.alert(
-        'Plus Feature',
-        'Exporting your journal data is a Plus feature.',
-        [
-          {text: 'Maybe Later', style: 'cancel'},
-          {text: 'See Plus', onPress: handleUpgradePress},
-        ],
-      );
-      return;
-    }
+    if (!user || exporting) return;
 
     setExporting(true);
     try {
@@ -595,7 +721,9 @@ export default function SettingsScreen({
             want: data.want || '',
             imagine: data.imagine || '',
             snags: data.snags || '',
-            howTo: data.howTo || '',
+            // The WISH doc stores this as `how` (Goals reads and writes `how`).
+            // The old export read `howTo`, which never exists, so How always came out blank.
+            how: data.how || '',
             progress: data.progress || 0,
             createdAt: safeToISOString(data.createdAt),
             updatedAt: safeToISOString(data.updatedAt),
@@ -628,34 +756,50 @@ export default function SettingsScreen({
 
       await ReactNativeBlobUtil.fs.writeFile(filePath, readableExport, 'utf8');
 
-      await Share.share({
-        title: 'InkWell Journal Export',
-        message: readableExport.substring(0, 500) + '...\n\n[Full export attached]',
-        url: Platform.OS === 'ios' ? filePath : `file://${filePath}`,
-      });
+      // iOS attaches the file to the share sheet. Android's share sheet can't carry a file
+      // from here, so on Android the file is saved to Downloads/InkWell (Android 10+), and
+      // older phones share the full text instead of the old 500-character preview.
+      let where = '';
+      if (Platform.OS === 'ios') {
+        await Share.share({title: 'InkWell Journal Export', url: filePath});
+      } else if (await saveToAndroidDownloads(fileName, filePath, 'text/plain')) {
+        where = `\n\nSaved to your Downloads folder, in InkWell, as ${fileName}.`;
+      } else {
+        await Share.share({title: 'InkWell Journal Export', message: readableExport});
+      }
 
-      Alert.alert(
-        'Export Complete',
-        `Exported ${journalEntries.length} journal entries and ${manifests.length} manifests.`,
-        [
-          {text: 'Done', style: 'default'},
-          {
-            text: 'Export as JSON',
-            onPress: async () => {
+      const counts = `Exported ${plural(journalEntries.length, 'entry', 'entries')} and ${plural(
+        manifests.length,
+        'goal',
+        'goals',
+      )}.`;
+      Alert.alert('Export ready', counts + where, [
+        {text: 'Done', style: 'default'},
+        {
+          text: 'Also as JSON',
+          onPress: async () => {
+            try {
               const jsonFileName = `InkWell_Export_${new Date().toISOString().split('T')[0]}.json`;
               const jsonPath = `${cacheDir}/${jsonFileName}`;
-              await ReactNativeBlobUtil.fs.writeFile(jsonPath, JSON.stringify(exportData, null, 2), 'utf8');
-              await Share.share({
-                title: 'InkWell Journal Export (JSON)',
-                url: Platform.OS === 'ios' ? jsonPath : `file://${jsonPath}`,
-              });
-            },
+              const json = JSON.stringify(exportData, null, 2);
+              await ReactNativeBlobUtil.fs.writeFile(jsonPath, json, 'utf8');
+              if (Platform.OS === 'ios') {
+                await Share.share({title: 'InkWell Journal Export (JSON)', url: jsonPath});
+              } else if (await saveToAndroidDownloads(jsonFileName, jsonPath, 'application/json')) {
+                Alert.alert('Saved', `Saved to your Downloads folder, in InkWell, as ${jsonFileName}.`);
+              } else {
+                await Share.share({title: 'InkWell Journal Export (JSON)', message: json});
+              }
+            } catch (e) {
+              console.error('JSON export failed:', e);
+              Alert.alert('JSON export did not finish', 'Please try again.');
+            }
           },
-        ],
-      );
+        },
+      ]);
     } catch (error) {
       console.error('Error exporting data:', error);
-      Alert.alert('Export Failed', 'Unable to export your data. Please try again.');
+      Alert.alert('Export did not finish', 'Please try again.');
     } finally {
       setExporting(false);
     }
@@ -671,8 +815,8 @@ export default function SettingsScreen({
     text += '───────────────────────────────────────────\n';
     text += '                 STATISTICS\n';
     text += '───────────────────────────────────────────\n';
-    text += `Total Journal Entries: ${data.statistics.totalJournalEntries}\n`;
-    text += `Total Manifests: ${data.statistics.totalManifests}\n`;
+    text += `Total Entries: ${data.statistics.totalJournalEntries}\n`;
+    text += `Total Goals: ${data.statistics.totalManifests}\n`;
     if (data.statistics.firstEntryDate) {
       text += `First Entry: ${new Date(data.statistics.firstEntryDate).toLocaleDateString()}\n`;
     }
@@ -682,7 +826,7 @@ export default function SettingsScreen({
     text += '\n';
 
     text += '═══════════════════════════════════════════\n';
-    text += '              JOURNAL ENTRIES\n';
+    text += '                  ENTRIES\n';
     text += '═══════════════════════════════════════════\n\n';
 
     data.journalEntries.forEach((entry: any, index: number) => {
@@ -696,7 +840,7 @@ export default function SettingsScreen({
         : 'Unknown date';
 
       text += '───────────────────────────────────────────\n';
-      text += `Entry ${index + 1} - ${date}\n`;
+      text += `Entry ${index + 1}, ${date}\n`;
       text += '───────────────────────────────────────────\n';
 
       if (entry.promptUsed) {
@@ -718,24 +862,22 @@ export default function SettingsScreen({
 
     if (data.manifests.length > 0) {
       text += '═══════════════════════════════════════════\n';
-      text += '              WISH MANIFESTS\n';
+      text += '               GOALS (WISH)\n';
       text += '═══════════════════════════════════════════\n\n';
 
       data.manifests.forEach((manifest: any, index: number) => {
-        // Field names fixed 2026-07-04 (pre-existing bug: printed wish/outcome/
-        // opposition/plan, but export data carries want/imagine/snags/howTo)
         const manifestDate = manifest.updatedAt
           ? new Date(manifest.updatedAt).toLocaleDateString()
           : manifest.createdAt
           ? new Date(manifest.createdAt).toLocaleDateString()
           : 'Unknown date';
         text += '───────────────────────────────────────────\n';
-        text += `Manifest ${index + 1} - ${manifestDate}\n`;
+        text += `Goal ${index + 1}, ${manifestDate}\n`;
         text += '───────────────────────────────────────────\n';
         text += `Want: ${manifest.want}\n`;
         text += `Imagine: ${manifest.imagine}\n`;
         text += `Snags: ${manifest.snags}\n`;
-        text += `How: ${manifest.howTo}\n\n`;
+        text += `How: ${manifest.how}\n\n`;
       });
     }
 
@@ -765,38 +907,41 @@ export default function SettingsScreen({
 
       setDeleteModalVisible(false);
 
+      const signOut = async () => {
+        try {
+          await auth().signOut();
+        } catch (e) {
+          console.error('Sign out after deletion request failed:', e);
+        }
+      };
+
+      // Sign out right away, not on OK: if the app closed with this notice up, the next
+      // launch would see a signed-in person and cancel the deletion they just asked for.
       Alert.alert(
-        'Account Deletion Scheduled',
-        `Your account will be permanently deleted on ${scheduledDeletion.toLocaleDateString()}. You can cancel this by logging in again before that date.`,
-        [
-          {
-            text: 'OK',
-            onPress: async () => {
-              await auth().signOut();
-            },
-          },
-        ],
+        'Deletion scheduled',
+        `Your account and everything in it, including photos and files, will be deleted on ${scheduledDeletion.toLocaleDateString()}. Sign in again before then to cancel.`,
+        [{text: 'OK'}],
       );
+      await signOut();
     } catch (error) {
       console.error('Error requesting account deletion:', error);
-      Alert.alert('Error', 'Failed to schedule account deletion. Please try again.');
+      Alert.alert('Not scheduled', 'Your account deletion did not go through. Please try again.');
     } finally {
       setDeletingAccount(false);
     }
   };
 
-  const handleLogout = () => {
-    Alert.alert('Logout', 'Are you sure you want to logout?', [
+  const handleSignOut = () => {
+    Alert.alert('Sign out?', 'You can sign back in any time.', [
       {text: 'Cancel', style: 'cancel'},
       {
-        text: 'Logout',
-        style: 'destructive',
+        text: 'Sign out',
         onPress: async () => {
           try {
             await auth().signOut();
           } catch (error) {
-            console.error('Logout error:', error);
-            Alert.alert('Error', 'Failed to logout. Please try again.');
+            console.error('Sign out error:', error);
+            Alert.alert('Not signed out', 'Please try again.');
           }
         },
       },
@@ -812,149 +957,355 @@ export default function SettingsScreen({
 
   const themeHint =
     themeMode === 'system'
-      ? `Currently using ${isDark ? 'dark' : 'light'} mode based on your device settings`
+      ? `Following your phone, ${isDark ? 'dark' : 'light'} right now.`
       : themeMode === 'reading'
-      ? 'Reading mode active. Warm paper, your choice.'
-      : `${themeMode === 'dark' ? 'Dark' : 'Light'} mode active`;
+      ? 'Warm paper, easy on the eyes.'
+      : themeMode === 'dark'
+      ? 'Dark, always.'
+      : 'Light, always.';
+
+  const showSmsSave = smsEnabled || smsEnabled !== smsEnabledStored;
 
   return (
-    <KeyboardAvoidingView
-      style={styles.keyboardAvoid}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      keyboardVerticalOffset={getKeyboardVerticalOffset(true)}>
+    <KeyboardAvoidingView style={styles.screen} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <IdentityBar refreshTrigger={dotsRefresh} />
       <ScrollView
         style={styles.container}
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={styles.scrollContent}>
-        <View style={iPadContentStyle(screenWidth)}>
-          {/* ==================== ACCOUNT + PROFILE ==================== */}
-          <View style={styles.section}>
-            <Eyebrow style={styles.sectionEyebrow}>Account</Eyebrow>
-            <Card>
-              <View style={styles.row}>
-                <Text style={styles.label}>Email</Text>
-                <Text style={styles.value}>{user?.email || 'Not signed in'}</Text>
-              </View>
-              <View style={styles.profileBlock}>
-                <Text style={styles.inputLabel}>What should Sophy call you?</Text>
-                <View style={styles.profileRow}>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Your name (optional)"
-                    placeholderTextColor={colors.fontMuted}
-                    value={profileName}
-                    onChangeText={setProfileName}
-                    autoCapitalize="words"
-                  />
-                  <IWButton voice="gray" small title="Save" onPress={saveProfile} loading={savingProfile} />
-                </View>
-                {profileStatus ? <Text style={styles.inlineStatus}>{profileStatus}</Text> : null}
-              </View>
-            </Card>
-          </View>
+        <View style={[styles.inner, iPadContentStyle(screenWidth)]}>
+          <ScreenTitle containerStyle={styles.titleWrap}>You</ScreenTitle>
 
-          {/* ==================== SUBSCRIPTION ==================== */}
-          <View style={styles.section}>
-            <Eyebrow style={styles.sectionEyebrow}>Subscription</Eyebrow>
-            <Card>
-              <View style={styles.subscriptionHeader}>
-                <View style={styles.subscriptionInfo}>
-                  <Text style={styles.label}>Current plan</Text>
-                  {subscriptionLoading ? (
-                    <ActivityIndicator size="small" color={colors.brandPrimary} />
-                  ) : (
-                    <View
-                      style={[
-                        styles.subscriptionBadge,
-                        subscriptionTier !== 'free' && styles.subscriptionBadgePaid,
-                      ]}>
-                      <Text style={styles.subscriptionBadgeText}>
-                        {subscriptionTier === 'free' && 'Free'}
-                        {subscriptionTier === 'plus' && 'Plus'}
-                        {subscriptionTier === 'connect' && 'Connect'}
-                      </Text>
-                    </View>
-                  )}
-                  {isActive && <Text style={styles.subscriptionStatusText}>Status: Active</Text>}
-                </View>
-                <IWButton
-                  small
-                  title={subscriptionTier === 'free' ? 'Upgrade' : 'Manage'}
-                  onPress={handleUpgradePress}
+          {/* ==================== 1. YOUR LOOK ==================== */}
+          <Card>
+            <Eyebrow style={styles.cardEyebrow}>Your look</Eyebrow>
+            <View style={styles.pillRow}>
+              {themeOptions.map(opt => (
+                <Pill
+                  key={opt.mode}
+                  label={opt.label}
+                  active={themeMode === opt.mode}
+                  onPress={() => setThemeMode(opt.mode)}
                 />
+              ))}
+            </View>
+            <Text style={styles.helper}>{themeHint}</Text>
+          </Card>
+
+          {/* ==================== 2. SOPHY ==================== */}
+          <View style={styles.section}>
+            <Eyebrow sophy style={styles.eyebrow}>
+              Sophy
+            </Eyebrow>
+            <View style={styles.block}>
+              <Text style={styles.blockTitle}>What should Sophy call you?</Text>
+              <View style={styles.inputRow}>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Your name (optional)"
+                  placeholderTextColor={colors.fontMuted}
+                  value={profileName}
+                  onChangeText={setProfileName}
+                  onSubmitEditing={saveProfile}
+                  returnKeyType="done"
+                  autoCapitalize="words"
+                  accessibilityLabel="What should Sophy call you?"
+                />
+                <IWButton voice="gray" title="Save" onPress={saveProfile} loading={savingProfile} />
               </View>
-              {subscriptionTier === 'free' && (
-                <Text style={styles.subscriptionPromptText}>
-                  Plus adds unlimited Sophy prompts and reflections, voice cleanup, file attachments, email
-                  insights, and SMS notifications.
-                </Text>
-              )}
-            </Card>
+              {profileStatus ? <Text style={styles.status}>{profileStatus}</Text> : null}
+            </View>
           </View>
 
-          {/* ==================== APPEARANCE ==================== */}
+          {/* ==================== 3. REMINDERS AND EMAILS ==================== */}
           <View style={styles.section}>
-            <Eyebrow style={styles.sectionEyebrow}>Appearance</Eyebrow>
-            <Card>
-              <Text style={styles.inputLabel}>Theme</Text>
-              <View style={styles.themeOptions}>
-                {themeOptions.map(opt => (
-                  <Pill
-                    key={opt.mode}
-                    label={opt.label}
-                    active={themeMode === opt.mode}
-                    onPress={() => setThemeMode(opt.mode)}
+            <Eyebrow style={styles.eyebrow}>Reminders and emails</Eyebrow>
+
+            {/* Push: free for everyone */}
+            <Row
+              title="Notifications"
+              subtitle="Prompts and reminders on this phone."
+              right={
+                <Switch
+                  value={pushEnabled}
+                  onValueChange={handlePushToggle}
+                  accessibilityLabel="Notifications"
+                  {...switchColors(pushEnabled)}
+                />
+              }
+            />
+            {pushEnabled && (
+              <>
+                <Row
+                  nested
+                  title="Daily journal prompts"
+                  right={
+                    <Switch
+                      value={pushDailyPrompts}
+                      onValueChange={setPushDailyPrompts}
+                      accessibilityLabel="Daily journal prompts"
+                      {...switchColors(pushDailyPrompts)}
+                    />
+                  }
+                />
+                {isPremium ? (
+                  <>
+                    <Row
+                      nested
+                      title="Goal milestones"
+                      right={
+                        <Switch
+                          value={pushWishMilestones}
+                          onValueChange={setPushWishMilestones}
+                          accessibilityLabel="Goal milestones"
+                          {...switchColors(pushWishMilestones)}
+                        />
+                      }
+                    />
+                    <Row
+                      nested
+                      title="Daily gratitude from Sophy"
+                      right={
+                        <Switch
+                          value={pushGratitudePrompts}
+                          onValueChange={setPushGratitudePrompts}
+                          accessibilityLabel="Daily gratitude from Sophy"
+                          {...switchColors(pushGratitudePrompts)}
+                        />
+                      }
+                    />
+                    <Row
+                      nested
+                      title="Weekly insights"
+                      right={
+                        <Switch
+                          value={pushWeeklyInsights}
+                          onValueChange={setPushWeeklyInsights}
+                          accessibilityLabel="Weekly insights"
+                          {...switchColors(pushWeeklyInsights)}
+                        />
+                      }
+                    />
+                  </>
+                ) : (
+                  <Row
+                    nested
+                    title="More reminder types"
+                    subtitle="Plus adds goal milestones, daily gratitude from Sophy, and weekly insights."
+                    chevron
+                    onPress={openPaywall}
                   />
-                ))}
-              </View>
-              <Text style={styles.hintText}>{themeHint}</Text>
-            </Card>
+                )}
+                <View style={styles.nestedAction}>
+                  <IWButton
+                    voice="gray"
+                    title="Save notification settings"
+                    onPress={() => savePushPreferences()}
+                    loading={savingPush}
+                  />
+                </View>
+              </>
+            )}
+            {pushPermissionStatus === 'denied' && (
+              <Row
+                nested
+                title="Open phone settings"
+                subtitle="Your phone is blocking InkWell notifications."
+                chevron
+                onPress={() => notificationService.openSettings()}
+              />
+            )}
+            {pushStatus ? <Text style={styles.status}>{pushStatus}</Text> : null}
+
+            {/* SMS: Plus */}
+            {!isPremium ? (
+              <Row
+                title="Text messages"
+                subtitle="Plus adds prompts, gratitude, and goal reminders by text."
+                chevron
+                onPress={() => checkFeatureAndShowPaywall('sms')}
+              />
+            ) : (
+              <>
+                <Row
+                  title="Text messages"
+                  subtitle="Reminders and insights from InkWell by text."
+                  right={
+                    <Switch
+                      value={smsEnabled}
+                      onValueChange={setSmsEnabled}
+                      accessibilityLabel="Text messages"
+                      {...switchColors(smsEnabled)}
+                    />
+                  }
+                />
+                {smsEnabled && (
+                  <View style={styles.nestedBlock}>
+                    <Text style={styles.fieldLabel}>Phone number</Text>
+                    <View style={styles.inputRow}>
+                      <View style={styles.countryCodePicker}>
+                        <Picker
+                          selectedValue={countryCode}
+                          onValueChange={value => setCountryCode(value)}
+                          style={[styles.picker, {color: colors.fontMain}]}
+                          itemStyle={{color: colors.fontMain}}>
+                          {COUNTRY_CODES.map(c => (
+                            <Picker.Item
+                              key={c.code}
+                              label={`${c.country} ${c.code}`}
+                              value={c.code}
+                              color={colors.fontMain}
+                            />
+                          ))}
+                        </Picker>
+                      </View>
+                      <TextInput
+                        style={styles.input}
+                        placeholder="(555) 123-4567"
+                        placeholderTextColor={colors.fontMuted}
+                        value={localPhoneNumber}
+                        onChangeText={handlePhoneChange}
+                        keyboardType="phone-pad"
+                        autoCapitalize="none"
+                        accessibilityLabel="Phone number"
+                      />
+                    </View>
+                    <Text style={styles.helper}>Pick your country code, then enter your number.</Text>
+
+                    <Text style={styles.fieldLabel}>Time zone</Text>
+                    <Picker
+                      selectedValue={selectedTimezone}
+                      onValueChange={value => setSelectedTimezone(value)}
+                      style={[styles.picker, {color: colors.fontMain}]}
+                      itemStyle={{color: colors.fontMain}}>
+                      {TIMEZONES.map(tz => (
+                        <Picker.Item key={tz.value} label={tz.label} value={tz.value} color={colors.fontMain} />
+                      ))}
+                    </Picker>
+                  </View>
+                )}
+                {smsEnabled && (
+                  <>
+                    <Row
+                      nested
+                      title="Goal milestones"
+                      right={
+                        <Switch
+                          value={smsWishMilestones}
+                          onValueChange={setSmsWishMilestones}
+                          accessibilityLabel="Goal milestones by text"
+                          {...switchColors(smsWishMilestones)}
+                        />
+                      }
+                    />
+                    <Row
+                      nested
+                      title="Daily journal prompts"
+                      right={
+                        <Switch
+                          value={smsDailyPrompts}
+                          onValueChange={setSmsDailyPrompts}
+                          accessibilityLabel="Daily journal prompts by text"
+                          {...switchColors(smsDailyPrompts)}
+                        />
+                      }
+                    />
+                    <Row
+                      nested
+                      title="Daily gratitude from Sophy"
+                      right={
+                        <Switch
+                          value={smsGratitudePrompts}
+                          onValueChange={setSmsGratitudePrompts}
+                          accessibilityLabel="Daily gratitude from Sophy by text"
+                          {...switchColors(smsGratitudePrompts)}
+                        />
+                      }
+                    />
+                    <Row
+                      nested
+                      title="Weekly insights"
+                      right={
+                        <Switch
+                          value={smsWeeklyInsights}
+                          onValueChange={setSmsWeeklyInsights}
+                          accessibilityLabel="Weekly insights by text"
+                          {...switchColors(smsWeeklyInsights)}
+                        />
+                      }
+                    />
+                  </>
+                )}
+                {showSmsSave && (
+                  <View style={styles.nestedAction}>
+                    <IWButton
+                      voice="gray"
+                      title="Save text message settings"
+                      onPress={saveSmsPreferences}
+                      loading={savingSms}
+                    />
+                  </View>
+                )}
+                {smsStatus ? <Text style={styles.status}>{smsStatus}</Text> : null}
+              </>
+            )}
+
+            {/* Email insights: Plus */}
+            {!isPremium ? (
+              <Row
+                title="Email insights from Sophy"
+                subtitle="Plus adds a weekly and monthly read of your patterns, by email."
+                chevron
+                onPress={() => checkFeatureAndShowPaywall('ai')}
+              />
+            ) : (
+              <>
+                <Row
+                  title="Weekly insights email"
+                  subtitle="Every Monday morning"
+                  right={
+                    <Switch
+                      value={weeklyInsightsEnabled}
+                      onValueChange={value => {
+                        setWeeklyInsightsEnabled(value);
+                        saveInsightsPreferences(value, monthlyInsightsEnabled);
+                      }}
+                      disabled={savingInsights}
+                      accessibilityLabel="Weekly insights email"
+                      {...switchColors(weeklyInsightsEnabled)}
+                    />
+                  }
+                />
+                <Row
+                  title="Monthly insights email"
+                  subtitle="First of every month"
+                  right={
+                    <Switch
+                      value={monthlyInsightsEnabled}
+                      onValueChange={value => {
+                        setMonthlyInsightsEnabled(value);
+                        saveInsightsPreferences(weeklyInsightsEnabled, value);
+                      }}
+                      disabled={savingInsights}
+                      accessibilityLabel="Monthly insights email"
+                      {...switchColors(monthlyInsightsEnabled)}
+                    />
+                  }
+                />
+              </>
+            )}
           </View>
 
-          {/* ==================== YOUR WORDS (privacy promise — web verbatim) ====================
-              LAW: every line must stay architecturally true. Never say HIPAA. */}
+          {/* ==================== 4. PRACTICE SUMMARY (free) ==================== */}
           <View style={styles.section}>
-            <Eyebrow style={styles.sectionEyebrow}>Your Words</Eyebrow>
-            <Card>
-              <Text style={styles.privacyLine}>
-                Your entries are encrypted in transit and at rest. No other user can ever see them.
-              </Text>
-              <Text style={styles.privacyLine}>
-                Nothing you write is sold, shared with advertisers, or used to train AI models.
-              </Text>
-              <Text style={styles.privacyLine}>
-                Sophy reads an entry only when you ask her to. Her AI providers process it to respond and do not
-                keep it to train on.
-              </Text>
-              <Text style={styles.privacyLine}>
-                We measure taps and screens to make InkWell better. We do not measure your words.
-              </Text>
-              <Text style={styles.privacyLine}>
-                Delete your account and your words are permanently gone within 30 days.
-              </Text>
-              <Text style={styles.privacyFootnote}>
-                Like any company, we must answer valid legal process; we keep what we store minimal. Full details
-                in the{' '}
-                <Text
-                  style={styles.privacyLink}
-                  onPress={() => Linking.openURL('https://www.inkwelljournal.io/privacy-policy/')}>
-                  Privacy Policy
-                </Text>
-                . InkWell is a wellness journal, not a medical record.
-              </Text>
-            </Card>
-          </View>
-
-          {/* ==================== PRACTICE SUMMARY (FREE tier by law) ==================== */}
-          <View style={styles.section}>
-            <Eyebrow style={styles.sectionEyebrow}>Practice Summary</Eyebrow>
-            <Card>
-              <Text style={styles.cardBody}>
+            <Eyebrow style={styles.eyebrow}>Practice Summary</Eyebrow>
+            <View style={styles.block}>
+              <Text style={styles.body}>
                 A one-page summary of how you have been using InkWell: days journaled, streaks, and your practice
                 mix. It never includes what you wrote. We email it to you, and only you. Some people forward it to
                 a therapist, coach, or doctor they work with. That part is always your call.
               </Text>
-              <View style={styles.summaryRow}>
+              <View style={styles.pillRow}>
                 {SUMMARY_DAY_OPTIONS.map(d => (
                   <Pill
                     key={d}
@@ -968,475 +1319,196 @@ export default function SettingsScreen({
                 title="Email me my summary"
                 onPress={handleSendPracticeSummary}
                 loading={sendingSummary}
-                style={styles.cardAction}
+                style={styles.blockAction}
               />
-              {summaryStatus ? <Text style={styles.inlineStatus}>{summaryStatus}</Text> : null}
-            </Card>
-          </View>
-
-          {/* ==================== EMAIL INSIGHTS (Plus) ==================== */}
-          <View style={styles.section}>
-            <View style={styles.sectionTitleRow}>
-              <Eyebrow style={styles.sectionEyebrowInline}>Email Insights from Sophy</Eyebrow>
-              {!isPremium && (
-                <View style={styles.plusBadge}>
-                  <Text style={styles.plusBadgeText}>Plus</Text>
-                </View>
-              )}
+              {summaryStatus ? <Text style={styles.status}>{summaryStatus}</Text> : null}
             </View>
-            {!isPremium ? (
-              <Card>
-                <Text style={styles.cardBody}>
-                  Plus adds personalized insights analyzing your journal patterns and mood trends, delivered to
-                  your email.
-                </Text>
-                <IWButton
-                  title="See Plus"
-                  onPress={() => checkFeatureAndShowPaywall('ai')}
-                  style={styles.cardAction}
-                />
-              </Card>
-            ) : (
-              <Card>
-                <Text style={styles.cardBody}>
-                  Receive personalized insights analyzing your journal patterns and mood trends.
-                </Text>
-                <View style={styles.switchRow}>
-                  <View style={styles.switchLabel}>
-                    <Text style={styles.switchTitle}>Weekly insights</Text>
-                    <Text style={styles.switchDescription}>Every Monday morning</Text>
-                  </View>
-                  <Switch
-                    value={weeklyInsightsEnabled}
-                    onValueChange={value => {
-                      setWeeklyInsightsEnabled(value);
-                      saveInsightsPreferences(value, monthlyInsightsEnabled);
-                    }}
-                    trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                    thumbColor={weeklyInsightsEnabled ? colors.brandPrimary : colors.fontMuted}
-                    disabled={savingInsights}
-                  />
-                </View>
-                <View style={styles.switchRow}>
-                  <View style={styles.switchLabel}>
-                    <Text style={styles.switchTitle}>Monthly insights</Text>
-                    <Text style={styles.switchDescription}>First of every month</Text>
-                  </View>
-                  <Switch
-                    value={monthlyInsightsEnabled}
-                    onValueChange={value => {
-                      setMonthlyInsightsEnabled(value);
-                      saveInsightsPreferences(weeklyInsightsEnabled, value);
-                    }}
-                    trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                    thumbColor={monthlyInsightsEnabled ? colors.brandPrimary : colors.fontMuted}
-                    disabled={savingInsights}
-                  />
-                </View>
-                {savingInsights && (
-                  <View style={styles.savingIndicator}>
-                    <ActivityIndicator size="small" color={colors.brandPrimary} />
-                    <Text style={styles.hintText}>Saving...</Text>
-                  </View>
-                )}
-              </Card>
-            )}
           </View>
 
-          {/* ==================== NOTIFICATIONS ==================== */}
+          {/* ==================== 5. YOUR WORDS ====================
+              LAW: every privacy line must stay architecturally true. Never say HIPAA. */}
           <View style={styles.section}>
-            <Eyebrow style={styles.sectionEyebrow}>Notifications</Eyebrow>
-
-            {/* Push — free for all users */}
-            <Card>
-              <Text style={styles.subsectionTitle}>Push notifications</Text>
-              <Text style={styles.cardBody}>Receive phone notifications for prompts and reminders.</Text>
-
-              <View style={styles.switchRow}>
-                <View style={styles.switchLabel}>
-                  <Text style={styles.switchTitle}>Enable push notifications</Text>
-                </View>
+            <Eyebrow style={styles.eyebrow}>Your words</Eyebrow>
+            <View style={styles.block}>
+              <Text style={styles.privacyLine}>
+                Your entries are encrypted in transit and at rest. No other user can ever see them.
+              </Text>
+              <Text style={styles.privacyLine}>
+                Nothing you write is sold, shared with advertisers, or used to train AI models.
+              </Text>
+              <Text style={styles.privacyLine}>
+                Sophy reads an entry only when you ask her to, or when you turn on her insights in You. Her AI
+                providers process it to respond and do not keep it to train on.
+              </Text>
+              <Text style={styles.privacyLine}>
+                We keep a few dates, like when you last opened the app, so we can tell what helps. We never measure your words.
+              </Text>
+              <Text style={styles.privacyLine}>
+                Delete your account and your words are permanently gone within 30 days.
+              </Text>
+              <Text style={styles.privacyFootnote}>
+                Like any company, we must answer valid legal process; we keep what we store minimal. Full details
+                in the{' '}
+                <Text
+                  style={styles.link}
+                  accessibilityRole="link"
+                  onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy/')}>
+                  Privacy Policy
+                </Text>
+                . InkWell is a wellness journal, not a medical record.
+              </Text>
+            </View>
+            <Row
+              title="Export your journal"
+              subtitle="Your entries, goals, and Sophy's reflections, as text or JSON."
+              onPress={handleExportData}
+              disabled={exporting}
+              right={exporting ? <ActivityIndicator size="small" color={colors.brandPrimary} /> : undefined}
+              chevron={!exporting}
+            />
+            <Row
+              title="Show past entries on Today"
+              subtitle="Today can bring back something you wrote a while ago."
+              right={
                 <Switch
-                  value={pushEnabled}
-                  onValueChange={handlePushToggle}
-                  trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                  thumbColor={pushEnabled ? colors.brandPrimary : colors.fontMuted}
+                  value={showMemories}
+                  onValueChange={handleShowMemoriesToggle}
+                  accessibilityLabel="Show past entries on Today"
+                  {...switchColors(showMemories)}
                 />
-              </View>
-
-              {pushEnabled && (
-                <View style={styles.prefGroup}>
-                  <Text style={styles.prefGroupTitle}>Notification types</Text>
-
-                  <View style={styles.switchRowSmall}>
-                    <Text style={styles.switchTitleSmall}>Daily journal prompts</Text>
-                    <Switch
-                      value={pushDailyPrompts}
-                      onValueChange={setPushDailyPrompts}
-                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                      thumbColor={pushDailyPrompts ? colors.brandPrimary : colors.fontMuted}
-                    />
-                  </View>
-
-                  {isPremium ? (
-                    <>
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitleSmall}>WISH milestone reminders</Text>
-                        <Switch
-                          value={pushWishMilestones}
-                          onValueChange={setPushWishMilestones}
-                          trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                          thumbColor={pushWishMilestones ? colors.brandPrimary : colors.fontMuted}
-                        />
-                      </View>
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitleSmall}>Daily gratitude from Sophy</Text>
-                        <Switch
-                          value={pushGratitudePrompts}
-                          onValueChange={setPushGratitudePrompts}
-                          trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                          thumbColor={pushGratitudePrompts ? colors.brandPrimary : colors.fontMuted}
-                        />
-                      </View>
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitleSmall}>Weekly insights</Text>
-                        <Switch
-                          value={pushWeeklyInsights}
-                          onValueChange={setPushWeeklyInsights}
-                          trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                          thumbColor={pushWeeklyInsights ? colors.brandPrimary : colors.fontMuted}
-                        />
-                      </View>
-                    </>
-                  ) : (
-                    <View style={styles.lockedGroup}>
-                      <Text style={styles.cardBody}>Plus adds more notification types:</Text>
-                      <Text style={styles.lockedItem}>WISH milestone reminders</Text>
-                      <Text style={styles.lockedItem}>Daily gratitude from Sophy</Text>
-                      <Text style={styles.lockedItem}>Weekly insights</Text>
-                      <IWButton title="See Plus" onPress={handleUpgradePress} style={styles.cardAction} />
-                    </View>
-                  )}
-
-                  <IWButton
-                    voice="gray"
-                    title="Save push preferences"
-                    onPress={() => savePushPreferences()}
-                    loading={savingPush}
-                    style={styles.cardAction}
-                  />
-                </View>
-              )}
-              {pushStatus ? <Text style={styles.inlineStatus}>{pushStatus}</Text> : null}
-
-              {pushPermissionStatus === 'denied' && (
-                <IWButton
-                  voice="gray"
-                  title="Open device settings"
-                  onPress={() => notificationService.openSettings()}
-                  style={styles.cardAction}
-                />
-              )}
-            </Card>
-
-            {/* SMS — Plus */}
-            <Card style={styles.stackedCard}>
-              <View style={styles.subsectionTitleRow}>
-                <Text style={styles.subsectionTitle}>SMS notifications</Text>
-                {!isPremium && (
-                  <View style={styles.plusBadge}>
-                    <Text style={styles.plusBadgeText}>Plus</Text>
-                  </View>
-                )}
-              </View>
-
-              {!isPremium ? (
-                <>
-                  <Text style={styles.cardBody}>
-                    Plus adds daily prompts, gratitude messages, and milestone reminders via text message.
-                  </Text>
-                  <IWButton
-                    title="See Plus"
-                    onPress={() => checkFeatureAndShowPaywall('sms')}
-                    style={styles.cardAction}
-                  />
-                </>
-              ) : (
-                <>
-                  <Text style={styles.cardBody}>
-                    Receive wellness reminders and insights from InkWell via text message.
-                  </Text>
-
-                  <Text style={styles.inputLabel}>Phone number</Text>
-                  <View style={styles.phoneInputRow}>
-                    <View style={styles.countryCodePicker}>
-                      <Picker
-                        selectedValue={countryCode}
-                        onValueChange={value => setCountryCode(value)}
-                        style={[styles.picker, {color: colors.fontMain}]}
-                        itemStyle={{color: colors.fontMain}}>
-                        {COUNTRY_CODES.map(c => (
-                          <Picker.Item
-                            key={c.code}
-                            label={`${c.country} ${c.code}`}
-                            value={c.code}
-                            color={colors.fontMain}
-                          />
-                        ))}
-                      </Picker>
-                    </View>
-                    <TextInput
-                      style={styles.phoneNumberInput}
-                      placeholder="(555) 123-4567"
-                      placeholderTextColor={colors.fontMuted}
-                      value={localPhoneNumber}
-                      onChangeText={handlePhoneChange}
-                      keyboardType="phone-pad"
-                      autoCapitalize="none"
-                    />
-                  </View>
-                  <Text style={styles.hintText}>Select country code, then enter your number</Text>
-
-                  <Text style={styles.inputLabel}>Timezone</Text>
-                  <Picker
-                    selectedValue={selectedTimezone}
-                    onValueChange={value => setSelectedTimezone(value)}
-                    style={[styles.picker, {color: colors.fontMain}]}
-                    itemStyle={{color: colors.fontMain}}>
-                    {TIMEZONES.map(tz => (
-                      <Picker.Item key={tz.value} label={tz.label} value={tz.value} color={colors.fontMain} />
-                    ))}
-                  </Picker>
-
-                  <View style={styles.switchRow}>
-                    <View style={styles.switchLabel}>
-                      <Text style={styles.switchTitle}>Enable SMS notifications</Text>
-                    </View>
-                    <Switch
-                      value={smsEnabled}
-                      onValueChange={setSmsEnabled}
-                      trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                      thumbColor={smsEnabled ? colors.brandPrimary : colors.fontMuted}
-                    />
-                  </View>
-
-                  {smsEnabled && (
-                    <View style={styles.prefGroup}>
-                      <Text style={styles.prefGroupTitle}>Notification types</Text>
-
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitleSmall}>WISH milestone reminders</Text>
-                        <Switch
-                          value={smsWishMilestones}
-                          onValueChange={setSmsWishMilestones}
-                          trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                          thumbColor={smsWishMilestones ? colors.brandPrimary : colors.fontMuted}
-                        />
-                      </View>
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitleSmall}>Daily journal prompts</Text>
-                        <Switch
-                          value={smsDailyPrompts}
-                          onValueChange={setSmsDailyPrompts}
-                          trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                          thumbColor={smsDailyPrompts ? colors.brandPrimary : colors.fontMuted}
-                        />
-                      </View>
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitleSmall}>Daily gratitude from Sophy</Text>
-                        <Switch
-                          value={smsGratitudePrompts}
-                          onValueChange={setSmsGratitudePrompts}
-                          trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                          thumbColor={smsGratitudePrompts ? colors.brandPrimary : colors.fontMuted}
-                        />
-                      </View>
-                      <View style={styles.switchRowSmall}>
-                        <Text style={styles.switchTitleSmall}>Weekly insights</Text>
-                        <Switch
-                          value={smsWeeklyInsights}
-                          onValueChange={setSmsWeeklyInsights}
-                          trackColor={{false: colors.borderMedium, true: colors.brandAlt}}
-                          thumbColor={smsWeeklyInsights ? colors.brandPrimary : colors.fontMuted}
-                        />
-                      </View>
-                    </View>
-                  )}
-
-                  <IWButton
-                    voice="gray"
-                    title="Save SMS preferences"
-                    onPress={saveSmsPreferences}
-                    loading={savingSms}
-                    style={styles.cardAction}
-                  />
-                  {smsStatus ? <Text style={styles.inlineStatus}>{smsStatus}</Text> : null}
-                </>
-              )}
-            </Card>
+              }
+            />
+            <Row title="Delete account" subtitle={DELETE_COPY} danger onPress={() => setDeleteModalVisible(true)} />
           </View>
 
-          {/* ==================== EXPORT (Plus) ==================== */}
+          {/* ==================== 6. INKWELL PLUS ==================== */}
           <View style={styles.section}>
-            <View style={styles.sectionTitleRow}>
-              <Eyebrow style={styles.sectionEyebrowInline}>Export Data</Eyebrow>
-              {!isPremium && (
-                <View style={styles.plusBadge}>
-                  <Text style={styles.plusBadgeText}>Plus</Text>
-                </View>
-              )}
-            </View>
-            <Card>
-              {!isPremium ? (
-                <>
-                  <Text style={styles.cardBody}>
-                    Plus adds full export of your journal entries, manifests, and Sophy reflections as a
-                    downloadable file.
-                  </Text>
-                  <IWButton title="See Plus" onPress={handleUpgradePress} style={styles.cardAction} />
-                </>
-              ) : (
-                <>
-                  <Text style={styles.cardBody}>
-                    Download all your journal entries, WISH manifests, and Sophy reflections. Export as readable
-                    text or JSON format.
-                  </Text>
-                  <IWButton
-                    title="Export my data"
-                    onPress={handleExportData}
-                    loading={exporting}
-                    style={styles.cardAction}
-                  />
-                </>
-              )}
-            </Card>
-          </View>
-
-          {/* ==================== HELP & ABOUT ==================== */}
-          <View style={styles.section}>
-            <Eyebrow style={styles.sectionEyebrow}>Help & About</Eyebrow>
-            <Card padded={false}>
-              <TouchableOpacity style={styles.navRow} onPress={() => navigation.navigate('Info')}>
-                <Text style={styles.navRowText}>Help & Tutorial</Text>
-                <Text style={styles.chevron}>›</Text>
-              </TouchableOpacity>
-              <Divider spacing={0} />
-              <TouchableOpacity style={styles.navRow} onPress={handleResetFirstSteps}>
-                <Text style={styles.navRowText}>Reset first steps</Text>
-                <Text style={styles.chevron}>›</Text>
-              </TouchableOpacity>
-              <Divider spacing={0} />
-              <View style={styles.navRow}>
-                <Text style={styles.navRowText}>App version</Text>
-                <Text style={styles.value}>{APP_VERSION}</Text>
-              </View>
-            </Card>
-
-            {/* Crisis resources — content preserved, chrome restyled */}
-            <TouchableOpacity style={styles.crisisButton} onPress={() => setCrisisExpanded(!crisisExpanded)}>
-              <Text style={styles.crisisButtonText}>Mental Health Crisis Resources</Text>
-              <Text style={styles.crisisToggleIcon}>{crisisExpanded ? '▴' : '▾'}</Text>
-            </TouchableOpacity>
-
-            {crisisExpanded && (
-              <View style={styles.crisisContent}>
-                <Text style={styles.crisisTitle}>United States Crisis Resources</Text>
-                <Text style={styles.crisisSubtitle}>If you're experiencing a mental health crisis:</Text>
-
-                <TouchableOpacity style={styles.crisisLink} onPress={() => Linking.openURL('tel:988')}>
-                  <Text style={styles.crisisLinkText}>
-                    Call or text <Text style={styles.crisisBold}>988</Text> — Suicide & Crisis Lifeline
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.crisisLink}
-                  onPress={() => Linking.openURL('sms:741741&body=HOME')}>
-                  <Text style={styles.crisisLinkText}>
-                    Text <Text style={styles.crisisBold}>HOME</Text> to <Text style={styles.crisisBold}>741741</Text>{' '}
-                    — Crisis Text Line
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity style={styles.crisisLink} onPress={() => Linking.openURL('tel:1-800-273-8255')}>
-                  <Text style={styles.crisisLinkText}>
-                    Call <Text style={styles.crisisBold}>1-800-273-8255</Text> — Veterans Crisis Line
-                  </Text>
-                </TouchableOpacity>
-
-                <Text style={styles.crisisInternational}>
-                  Outside the US? Please reach out to your local emergency services or mental health resources.
-                </Text>
-
-                <Text style={styles.crisisDisclaimer}>
-                  InkWell and Sophy are wellness tools — not emergency services or replacements for professional
-                  mental health care.
-                </Text>
-              </View>
+            <Eyebrow style={styles.eyebrow}>InkWell Plus</Eyebrow>
+            <Row
+              title="Your plan"
+              subtitle={isPremium && isActive ? 'Active' : undefined}
+              right={
+                subscriptionLoading ? (
+                  <ActivityIndicator size="small" color={colors.brandPrimary} />
+                ) : (
+                  <View style={[styles.planBadge, isPremium && styles.planBadgePlus]}>
+                    {/* Legacy 'connect' subscribers count as Plus (isPremium) */}
+                    <Text style={[styles.planBadgeText, isPremium && styles.planBadgeTextPlus]}>
+                      {isPremium ? 'Plus' : 'Free'}
+                    </Text>
+                  </View>
+                )
+              }
+            />
+            {isPremium ? (
+              <Row
+                title="Manage subscription"
+                subtitle={Platform.OS === 'ios' ? 'Opens your App Store subscriptions.' : 'Opens your Google Play subscriptions.'}
+                chevron
+                onPress={handleManageSubscription}
+              />
+            ) : (
+              <Row
+                title="See what Plus adds"
+                subtitle="Already subscribed? You can restore it there too."
+                chevron
+                onPress={openPaywall}
+              />
             )}
           </View>
 
-          {/* ==================== LOGOUT / DELETE ==================== */}
+          {/* ==================== 7. HELP RIGHT NOW (always visible, quiet) ==================== */}
           <View style={styles.section}>
-            <IWButton voice="danger" title="Logout" onPress={handleLogout} />
-            <TouchableOpacity style={styles.deleteAccountButton} onPress={() => setDeleteModalVisible(true)}>
-              <Text style={styles.deleteAccountText}>Delete Account</Text>
-            </TouchableOpacity>
+            <Eyebrow style={styles.eyebrow}>Help right now</Eyebrow>
+            <View style={styles.block}>
+              <Text style={styles.body}>
+                If things feel like too much: call or text 988. Veterans: dial 988, then press 1.
+              </Text>
+              <View style={styles.linkRow}>
+                <Pressable
+                  onPress={() => Linking.openURL('tel:988')}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  style={styles.linkHit}>
+                  <Text style={styles.linkAction}>Call 988</Text>
+                </Pressable>
+                <Pressable
+                  onPress={() => Linking.openURL('sms:988')}
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  style={styles.linkHit}>
+                  <Text style={styles.linkAction}>Text 988</Text>
+                </Pressable>
+              </View>
+              <Text style={styles.helper}>Outside the US, your local emergency number can help.</Text>
+            </View>
           </View>
 
-          {/* Footer */}
+          {/* ==================== 8. HELP AND ABOUT ==================== */}
+          <View style={styles.section}>
+            <Eyebrow style={styles.eyebrow}>Help and About</Eyebrow>
+            <Row
+              title="How InkWell works"
+              subtitle="The tabs, Sophy, privacy, and how to reach us."
+              chevron
+              onPress={() => navigation.navigate('Info')}
+            />
+            <Row title="Show the tips again" chevron onPress={handleResetFirstSteps} />
+            <Row title="Version" right={<Text style={styles.value}>{APP_VERSION}</Text>} />
+          </View>
+
+          {/* ==================== 9. SIGN OUT ==================== */}
+          <View style={styles.section}>
+            {user?.email ? <Text style={styles.signedInAs}>Signed in as {user.email}</Text> : null}
+            <IWButton voice="gray" title="Sign out" onPress={handleSignOut} />
+          </View>
+
           <View style={styles.footer}>
             <Text style={styles.footerText}>InkWell by Pegasus Realm</Text>
             <Text style={styles.footerText}>© 2026 All rights reserved</Text>
           </View>
-
-          {/* Paywall Modal */}
-          <PaywallModal visible={showPaywall} onClose={closePaywall} />
-
-          {/* Delete Account Modal */}
-          <Modal
-            visible={deleteModalVisible}
-            animationType="fade"
-            transparent={true}
-            onRequestClose={() => setDeleteModalVisible(false)}>
-            <View style={styles.modalOverlay}>
-              <View style={styles.modalContainer}>
-                <View style={styles.modalHeader}>
-                  <Text style={styles.modalTitle}>Delete Account?</Text>
-                  <TouchableOpacity onPress={() => setDeleteModalVisible(false)}>
-                    <Text style={styles.modalCloseButton}>×</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <Text style={styles.deleteWarningText}>
-                  This action will schedule your account for permanent deletion.
-                </Text>
-
-                <Text style={styles.modalDescription}>
-                  • All your journal entries will be deleted{'\n'}• This cannot be undone after 30 days{'\n'}
-                  {'\n'}You have a 30-day grace period to cancel by logging in again.
-                </Text>
-
-                <View style={styles.modalActions}>
-                  <IWButton
-                    voice="gray"
-                    title="Cancel"
-                    onPress={() => setDeleteModalVisible(false)}
-                    style={styles.modalButton}
-                  />
-                  <IWButton
-                    voice="danger"
-                    title={deletingAccount ? 'Scheduling...' : 'Delete Account'}
-                    onPress={handleRequestAccountDeletion}
-                    disabled={deletingAccount}
-                    style={styles.modalButton}
-                  />
-                </View>
-              </View>
-            </View>
-          </Modal>
         </View>
       </ScrollView>
+
+      <PaywallModal visible={showPaywall} onClose={closePaywall} />
+
+      {/* Delete account confirmation */}
+      <Modal
+        visible={deleteModalVisible}
+        animationType="fade"
+        transparent={true}
+        onRequestClose={() => setDeleteModalVisible(false)}>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContainer}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Delete your account?</Text>
+              <Pressable
+                onPress={() => setDeleteModalVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Close"
+                hitSlop={12}>
+                <CloseIcon color={colors.fontMuted} size={20} />
+              </Pressable>
+            </View>
+            <Text style={styles.modalBody}>{DELETE_COPY}</Text>
+            <View style={styles.modalActions}>
+              <IWButton
+                voice="gray"
+                title="Keep my account"
+                onPress={() => setDeleteModalVisible(false)}
+                style={styles.modalButton}
+              />
+              <IWButton
+                voice="danger"
+                title="Delete account"
+                onPress={handleRequestAccountDeletion}
+                loading={deletingAccount}
+                style={styles.modalButton}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -1444,7 +1516,7 @@ export default function SettingsScreen({
 // Dynamic styles based on theme colors
 const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    keyboardAvoid: {
+    screen: {
       flex: 1,
       backgroundColor: colors.bgPrimary,
     },
@@ -1454,482 +1526,248 @@ const createStyles = (colors: ThemeColors) =>
     },
     scrollContent: {
       flexGrow: 1,
-      paddingBottom: spacing.xxl,
+      paddingBottom: spacing.xxxl,
     },
-    section: {
-      marginTop: spacing.xl,
-      paddingHorizontal: spacing.base,
+    inner: {
+      paddingHorizontal: spacing.lg,
     },
-    sectionEyebrow: {
-      marginBottom: spacing.sm,
-    },
-    sectionEyebrowInline: {
-      marginBottom: 0,
-    },
-    sectionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: spacing.sm,
-    },
-    stackedCard: {
-      marginTop: spacing.md,
+    titleWrap: {
+      paddingTop: spacing.lg,
     },
 
-    // Rows / labels
-    row: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingBottom: spacing.md,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.borderLight,
+    // Sections
+    section: {
+      marginTop: 32,
     },
-    label: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
+    eyebrow: {
+      fontSize: 13,
+      marginBottom: spacing.md,
     },
-    value: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.md,
-      color: colors.fontSecondary,
-      flex: 1,
-      textAlign: 'right',
-      marginLeft: spacing.base,
+    cardEyebrow: {
+      fontSize: 13,
+      marginBottom: spacing.base,
     },
-    inputLabel: {
+    block: {
+      paddingBottom: spacing.base,
+    },
+    blockTitle: {
       fontFamily: fontFamily.button,
-      fontSize: fontSize.sm,
+      fontSize: 16,
+      lineHeight: 22,
+      color: colors.fontMain,
+      marginBottom: spacing.sm,
+    },
+    blockAction: {
+      marginTop: spacing.base,
+      alignSelf: 'flex-start',
+    },
+    nestedBlock: {
+      marginLeft: spacing.base,
+      paddingVertical: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.borderLight,
+    },
+    nestedAction: {
+      marginLeft: spacing.base,
+      paddingVertical: spacing.md,
+      alignItems: 'flex-start',
+    },
+
+    // Text
+    body: {
+      fontFamily: fontFamily.body,
+      fontSize: 16,
+      lineHeight: 24,
+      color: colors.fontSecondary,
+    },
+    helper: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 21,
+      color: colors.fontMuted,
+      marginTop: spacing.sm,
+    },
+    status: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 21,
+      color: colors.brandPrimary,
+      marginTop: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    fieldLabel: {
+      fontFamily: fontFamily.button,
+      fontSize: 15,
       color: colors.fontSecondary,
       marginBottom: spacing.xs,
       marginTop: spacing.sm,
     },
-    input: {
-      flex: 1,
-      fontFamily: fontFamily.serif,
-      backgroundColor: colors.bgCard,
-      borderRadius: borderRadius.md,
-      padding: spacing.sm,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
-      borderWidth: 1,
-      borderColor: colors.borderMedium,
-    },
-    inlineStatus: {
+    value: {
       fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      fontStyle: 'italic',
+      fontSize: 15,
       color: colors.fontMuted,
-      marginTop: spacing.sm,
     },
-    hintText: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
-      color: colors.fontMuted,
-      marginTop: spacing.xs,
-    },
-    cardBody: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
-      lineHeight: 21,
-      marginBottom: spacing.sm,
-    },
-    cardAction: {
-      marginTop: spacing.sm,
-      alignSelf: 'flex-start',
-    },
-
-    // Profile
-    profileBlock: {
-      paddingTop: spacing.md,
-    },
-    profileRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-    },
-
-    // Subscription
-    subscriptionHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    subscriptionInfo: {
-      flex: 1,
-    },
-    subscriptionBadge: {
-      alignSelf: 'flex-start',
-      backgroundColor: colors.bgMuted,
-      borderWidth: 1,
-      borderColor: colors.borderMedium,
-      paddingHorizontal: spacing.md,
-      paddingVertical: 4,
-      borderRadius: 999,
-      marginTop: spacing.xs,
-    },
-    subscriptionBadgePaid: {
-      backgroundColor: colors.brandPrimary,
-      borderColor: colors.brandPrimary,
-    },
-    subscriptionBadgeText: {
-      fontFamily: fontFamily.buttonBold,
-      fontSize: fontSize.sm,
-      color: colors.fontMain,
-      letterSpacing: 0.5,
-    },
-    subscriptionStatusText: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
-      color: colors.fontMuted,
-      marginTop: spacing.xs,
-    },
-    subscriptionPromptText: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
-      lineHeight: 21,
-      marginTop: spacing.md,
-      paddingTop: spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderLight,
-    },
-
-    // Plus badge
-    plusBadge: {
-      backgroundColor: colors.tierPlus,
-      paddingHorizontal: spacing.sm,
-      paddingVertical: 2,
-      borderRadius: borderRadius.sm,
-      marginLeft: spacing.sm,
-    },
-    plusBadgeText: {
-      fontFamily: fontFamily.buttonBold,
-      color: colors.fontWhite,
-      fontSize: fontSize.xs,
-      letterSpacing: 1,
-      textTransform: 'uppercase',
-    },
-
-    // Theme picker
-    themeOptions: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: spacing.sm,
-      marginTop: spacing.xs,
-    },
-
-    // Your Words
-    privacyLine: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
-      lineHeight: 21,
-      marginBottom: spacing.sm,
-    },
-    privacyFootnote: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
-      color: colors.fontMuted,
-      lineHeight: 18,
-    },
-    privacyLink: {
+    link: {
+      fontFamily: fontFamily.button,
       color: colors.brandPrimary,
       textDecorationLine: 'underline',
     },
 
-    // Practice Summary
-    summaryRow: {
+    // Pills
+    pillRow: {
       flexDirection: 'row',
       flexWrap: 'wrap',
       gap: spacing.sm,
-      marginTop: spacing.xs,
+      marginTop: spacing.md,
     },
 
-    // Switch rows
-    switchRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: spacing.sm,
-    },
-    switchLabel: {
-      flex: 1,
-      marginRight: spacing.md,
-    },
-    switchTitle: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
-    },
-    switchDescription: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
-      color: colors.fontMuted,
-      marginTop: 2,
-    },
-    switchRowSmall: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: spacing.xs,
-    },
-    switchTitleSmall: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
-      flex: 1,
-      marginRight: spacing.md,
-    },
-    prefGroup: {
-      marginTop: spacing.sm,
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderLight,
-    },
-    prefGroupTitle: {
-      fontFamily: fontFamily.button,
-      fontSize: fontSize.sm,
-      color: colors.fontSecondary,
-      marginBottom: spacing.xs,
-    },
-    lockedGroup: {
-      marginTop: spacing.sm,
-    },
-    lockedItem: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontMuted,
-      marginBottom: spacing.xs,
-      paddingLeft: spacing.sm,
-    },
-    subsectionTitle: {
-      fontFamily: fontFamily.header,
-      fontSize: fontSize.lg,
-      color: colors.fontMain,
-      marginBottom: spacing.xs,
-    },
-    subsectionTitleRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: spacing.xs,
-    },
-    savingIndicator: {
+    // Inputs
+    inputRow: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.sm,
-      marginTop: spacing.sm,
     },
-
-    // Phone / pickers
-    phoneInputRow: {
-      flexDirection: 'row',
-      gap: spacing.sm,
-      alignItems: 'center',
+    input: {
+      flex: 1,
+      fontFamily: fontFamily.serif,
+      fontSize: 17,
+      color: colors.fontMain,
+      backgroundColor: colors.bgCard,
+      borderRadius: borderRadius.lg,
+      borderWidth: 1,
+      borderColor: colors.borderMedium,
+      paddingHorizontal: spacing.md,
+      paddingVertical: Platform.OS === 'ios' ? 12 : 8,
     },
     countryCodePicker: {
       width: 150,
       borderWidth: 1,
       borderColor: colors.borderMedium,
-      borderRadius: borderRadius.md,
+      borderRadius: borderRadius.lg,
       backgroundColor: colors.bgCard,
       overflow: 'hidden',
-    },
-    phoneNumberInput: {
-      flex: 1,
-      fontFamily: fontFamily.body,
-      backgroundColor: colors.bgCard,
-      borderRadius: borderRadius.md,
-      padding: spacing.sm,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
-      borderWidth: 1,
-      borderColor: colors.borderMedium,
     },
     picker: {
       backgroundColor: colors.bgCard,
     },
 
-    // Help & About rows
-    navRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: spacing.md,
-      paddingHorizontal: spacing.base,
-      minHeight: 48,
-    },
-    navRowText: {
+    // Your words
+    privacyLine: {
       fontFamily: fontFamily.body,
-      fontSize: fontSize.md,
-      color: colors.fontMain,
+      fontSize: 16,
+      lineHeight: 24,
+      color: colors.fontSecondary,
+      marginBottom: spacing.md,
     },
-    chevron: {
-      fontSize: fontSize.xxl,
+    privacyFootnote: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 22,
+      color: colors.fontMuted,
+    },
+
+    // Plan badge (teal, never coral: coral is Sophy's)
+    planBadge: {
+      borderRadius: 999,
+      borderWidth: 1.5,
+      borderColor: colors.borderMedium,
+      paddingVertical: 4,
+      paddingHorizontal: 12,
+    },
+    planBadgePlus: {
+      backgroundColor: colors.btnPrimary,
+      borderColor: colors.btnPrimary,
+    },
+    planBadgeText: {
+      fontFamily: fontFamily.bodyBold,
+      fontSize: 13,
+      letterSpacing: 0.6,
+      color: colors.fontSecondary,
+    },
+    planBadgeTextPlus: {
+      color: colors.fontWhite,
+    },
+
+    // Help right now
+    linkRow: {
+      flexDirection: 'row',
+      gap: spacing.xl,
+      marginTop: spacing.sm,
+    },
+    linkHit: {
+      minHeight: 44,
+      justifyContent: 'center',
+    },
+    linkAction: {
+      fontFamily: fontFamily.button,
+      fontSize: 16,
       color: colors.brandPrimary,
     },
 
-    // Crisis resources
-    crisisButton: {
-      backgroundColor: colors.bgCard,
-      borderRadius: borderRadius.lg,
-      padding: spacing.base,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: colors.btnDanger,
-      marginTop: spacing.md,
-    },
-    crisisButtonText: {
-      fontFamily: fontFamily.button,
-      fontSize: fontSize.sm,
-      color: colors.btnDanger,
-      flex: 1,
-    },
-    crisisToggleIcon: {
-      fontSize: fontSize.sm,
-      color: colors.btnDanger,
-    },
-    crisisContent: {
-      backgroundColor: colors.bgCard,
-      borderRadius: borderRadius.md,
-      padding: spacing.base,
-      marginTop: spacing.sm,
-      borderLeftWidth: 4,
-      borderLeftColor: colors.btnDanger,
-    },
-    crisisTitle: {
-      fontFamily: fontFamily.header,
-      fontSize: fontSize.md,
-      color: colors.btnDanger,
-      marginBottom: spacing.sm,
-    },
-    crisisSubtitle: {
+    // Sign out
+    signedInAs: {
       fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontMain,
-      marginBottom: spacing.base,
-    },
-    crisisLink: {
-      backgroundColor: colors.bgMuted,
-      borderRadius: borderRadius.md,
-      padding: spacing.sm,
-      marginBottom: spacing.sm,
-    },
-    crisisLinkText: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
-      color: colors.fontMain,
-    },
-    crisisBold: {
-      fontFamily: fontFamily.buttonBold,
-      color: colors.btnDanger,
-    },
-    crisisInternational: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
-      color: colors.fontSecondary,
-      marginTop: spacing.sm,
-      paddingTop: spacing.sm,
-      borderTopWidth: 1,
-      borderTopColor: colors.borderLight,
-    },
-    crisisDisclaimer: {
-      fontFamily: fontFamily.body,
-      fontSize: fontSize.xs,
+      fontSize: 15,
       color: colors.fontMuted,
-      fontStyle: 'italic',
-      marginTop: spacing.sm,
-      lineHeight: 16,
-    },
-
-    // Logout / delete
-    deleteAccountButton: {
-      marginTop: spacing.md,
-      backgroundColor: colors.bgCard,
-      borderRadius: 10,
-      padding: spacing.base,
-      alignItems: 'center',
-      borderWidth: 1.5,
-      borderColor: colors.btnDanger,
-    },
-    deleteAccountText: {
-      fontFamily: fontFamily.buttonBold,
-      fontSize: fontSize.md,
-      color: colors.btnDanger,
-      letterSpacing: 0.5,
+      marginBottom: spacing.md,
     },
 
     // Footer
     footer: {
-      marginTop: spacing.xxl,
-      marginBottom: spacing.xxl,
+      paddingTop: spacing.xxl,
       alignItems: 'center',
     },
     footerText: {
-      fontFamily: fontFamily.button,
-      fontSize: fontSize.xs,
+      fontFamily: fontFamily.body,
+      fontSize: 13,
       color: colors.fontMuted,
       marginVertical: 2,
     },
 
-    // Modal
+    // Delete modal
     modalOverlay: {
       flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      backgroundColor: 'rgba(0, 0, 0, 0.55)',
       justifyContent: 'center',
-      alignItems: 'center',
+      padding: spacing.lg,
     },
     modalContainer: {
       backgroundColor: colors.bgCard,
-      borderRadius: borderRadius.xl,
-      padding: spacing.xl,
-      width: '85%',
-      maxWidth: 400,
-      shadowColor: '#000',
-      shadowOffset: {width: 0, height: 4},
-      shadowOpacity: 0.2,
-      shadowRadius: 8,
-      elevation: 8,
+      borderRadius: 14,
+      borderWidth: 1,
+      borderColor: colors.borderLight,
+      padding: spacing.lg,
+      maxWidth: 480,
+      width: '100%',
+      alignSelf: 'center',
     },
     modalHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: spacing.base,
+      marginBottom: spacing.md,
     },
     modalTitle: {
+      flex: 1,
       fontFamily: fontFamily.header,
-      fontSize: fontSize.xl,
+      fontSize: 22,
+      lineHeight: 28,
       color: colors.fontMain,
     },
-    modalCloseButton: {
-      fontSize: fontSize.xxl,
-      color: colors.fontMuted,
-      paddingHorizontal: spacing.sm,
-    },
-    deleteWarningText: {
-      fontFamily: fontFamily.header,
-      fontSize: fontSize.md,
-      color: colors.btnDanger,
-      marginBottom: spacing.base,
-      textAlign: 'center',
-    },
-    modalDescription: {
+    modalBody: {
       fontFamily: fontFamily.body,
-      fontSize: fontSize.sm,
+      fontSize: 16,
+      lineHeight: 24,
       color: colors.fontSecondary,
-      lineHeight: 22,
-      marginBottom: spacing.lg,
     },
     modalActions: {
       flexDirection: 'row',
+      flexWrap: 'wrap',
       justifyContent: 'flex-end',
       gap: spacing.sm,
+      marginTop: spacing.xl,
     },
     modalButton: {
-      minWidth: 110,
+      minWidth: 120,
     },
   });
