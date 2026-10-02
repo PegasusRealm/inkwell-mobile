@@ -733,6 +733,10 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       return;
     }
     saved.forEach(k => clearField[k]());
+    // The next entry starts fresh: its own before-rating, and not marked as spoken
+    setFeelBefore(0);
+    usedVoiceRef.current = false;
+    inkblotVoiceRef.current = false;
     const home = FIELD_HOME[remaining[0]];
     setMode(home.mode);
     if (home.grat) setActiveGratPractice(home.grat);
@@ -1175,6 +1179,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       gratLetterText,
       gratSavorText,
       voicePartialText, // words still being dictated count too
+      voiceText,
     ].some(s => s.trim().length > 0);
 
   // Every way out (Close, Android Back, a notification tap) asks first when there are
