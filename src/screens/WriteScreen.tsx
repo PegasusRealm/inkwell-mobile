@@ -1470,7 +1470,12 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
             <PhotoIcon color={colors.fontSecondary} />
           </TouchableOpacity>
         )}
-        <IWButton title="Keep this" onPress={keepHandler} loading={keepLoading} style={styles.keepBtn} />
+        <IWButton
+          title="Keep this"
+          onPress={keepHandler}
+          loading={keepLoading}
+          style={mode === 'free' ? styles.keepBtn : styles.keepBtnFull}
+        />
       </View>
 
       {/* Timed write idle cue: breathing teal edge frame, only while the timer runs. */}
@@ -2153,6 +2158,8 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
     toolOn: {backgroundColor: colors.btnPrimary, borderColor: colors.btnPrimary},
     toolActive: {borderColor: colors.brandPrimary},
     keepBtn: {marginLeft: 'auto', minWidth: 132},
+    // No tools beside it (Gratitude, Reframe): Keep spans the footer (Phil)
+    keepBtnFull: {flex: 1, marginLeft: 0},
   });
 
 export default WriteScreen;
