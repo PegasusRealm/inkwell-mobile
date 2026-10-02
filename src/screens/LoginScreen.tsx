@@ -25,6 +25,7 @@ import {GoogleSignin} from '@react-native-google-signin/google-signin';
 import appleAuth from '@invertase/react-native-apple-authentication';
 
 import {spacing, borderRadius, fontFamily, fontSize} from '../theme';
+import {CastaliaLockup} from '../components/kit/CastaliaMark';
 import {useTheme, ThemeColors} from '../theme/ThemeContext';
 import {iPadContentStyle} from '../utils/iPad';
 
@@ -161,7 +162,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       if (isNewUser) {
         setTimeout(() => {
           Alert.alert(
-            'Welcome to InkWell',
+            'Welcome to Castalia',
             'Your account is ready. Start with one line on Today. You can add your name anytime in the You tab.',
             [{ text: 'OK' }]
           );
@@ -217,7 +218,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       // Build display name from Apple response or fallbacks
       const displayName = appleAuthRequestResponse.fullName
         ? `${appleAuthRequestResponse.fullName.givenName || ''} ${appleAuthRequestResponse.fullName.familyName || ''}`.trim()
-        : userCredential.user.displayName || userCredential.user.email?.split('@')[0] || 'InkWell User';
+        : userCredential.user.displayName || userCredential.user.email?.split('@')[0] || 'Castalia User';
       
       // Check if this is a new user
       const userDocRef = firestore().collection('users').doc(userCredential.user.uid);
@@ -280,7 +281,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
       if (isNewUser) {
         setTimeout(() => {
           Alert.alert(
-            'Welcome to InkWell',
+            'Welcome to Castalia',
             'Your account is ready. Start with one line on Today. You can add your name anytime in the You tab.',
             [{ text: 'OK' }]
           );
@@ -363,7 +364,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
   // Email/Password Sign Up
   const handleEmailSignUp = async () => {
     // Name is optional (web parity) — fall back to the email prefix like OAuth paths
-    const signupName = displayName.trim() || email.split('@')[0] || 'InkWell User';
+    const signupName = displayName.trim() || email.split('@')[0] || 'Castalia User';
 
     if (!validateEmail(email)) {
       Alert.alert('Invalid Email', 'Please enter a valid email address.');
@@ -507,12 +508,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         bounces={true}>
-        {/* Logo */}
-        <Image
-          source={require('../../assets/InkWell-Logo.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+        {/* Castalia, stacked lockup */}
+        <CastaliaLockup stacked size={30} style={styles.logo} />
 
         {/* Title */}
         <Text style={styles.title}>
@@ -707,8 +704,6 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
     width: '100%',
   },
   logo: {
-    width: 120,
-    height: 120,
     alignSelf: 'center',
     marginBottom: spacing.xl,
   },

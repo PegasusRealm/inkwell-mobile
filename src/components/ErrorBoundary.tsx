@@ -36,7 +36,7 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <View style={styles.container}>
           <Text style={styles.title}>Something went wrong on this screen.</Text>
-          <Text style={styles.message}>Your saved entries are safe. Try again, and if it keeps happening, email support@inkwelljournal.io.</Text>
+          <Text style={styles.message}>Your saved entries are safe. Try again, and if it keeps happening, email support@pegasusrealm.com.</Text>
           <TouchableOpacity
             accessibilityRole="button"
             style={styles.button}

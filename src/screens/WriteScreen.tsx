@@ -462,7 +462,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       try {
         const granted = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.RECORD_AUDIO, {
           title: 'Microphone',
-          message: 'InkWell uses the microphone only while you speak an entry.',
+          message: 'Castalia uses the microphone only while you speak an entry.',
           buttonNeutral: 'Ask Me Later',
           buttonNegative: 'Cancel',
           buttonPositive: 'OK',
@@ -482,7 +482,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       return;
     }
     if (!(await requestMicrophonePermission())) {
-      Alert.alert('Microphone is off', 'Turn on microphone access for InkWell in your phone settings to speak an entry.');
+      Alert.alert('Microphone is off', 'Turn on microphone access for Castalia in your phone settings to speak an entry.');
       return;
     }
     try {
@@ -1146,7 +1146,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
       }
     } else {
       if (!(await requestMicrophonePermission())) {
-        Alert.alert('Microphone is off', 'Turn on microphone access for InkWell in your phone settings.');
+        Alert.alert('Microphone is off', 'Turn on microphone access for Castalia in your phone settings.');
         return;
       }
       try {
@@ -1708,7 +1708,7 @@ const WriteScreen: React.FC<RootStackScreenProps<'Write'>> = ({navigation, route
           <InfoSection title="What the research shows">
             <InfoParagraph>
               Writing down specific good things is linked with better mood, sleep and relationships. Variety matters:
-              doing the same list every day wears off, so InkWell rotates five practices and suggests one each day.
+              doing the same list every day wears off, so Castalia rotates five practices and suggests one each day.
             </InfoParagraph>
           </InfoSection>
           <InfoDivider />

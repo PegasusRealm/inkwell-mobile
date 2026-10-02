@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>InkWell</string>
+	<string>Castalia</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -32,7 +32,7 @@
 		</dict>
 	</array>
 	<key>CFBundleVersion</key>
-	<string>83</string>
+	<string>84</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
@@ -45,11 +45,11 @@
 		<true/>
 	</dict>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>InkWell needs access to your microphone to record voice journal entries with InkOutLoud.</string>
+	<string>Castalia uses your microphone only while you speak an entry.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>InkWell needs access to your photo library to attach images to your journal entries.</string>
+	<string>Castalia uses your photo library only when you add a photo to an entry.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>InkWell uses speech recognition to transcribe your voice journal entries into text.</string>
+	<string>Castalia uses speech recognition to turn your spoken entries into text.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Manrope-SemiBold.ttf</string>

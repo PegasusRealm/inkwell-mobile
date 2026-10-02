@@ -11,3 +11,4 @@ export type {ButtonVoice} from './IWButton';
 export {Pill} from './Pill';
 export {SophyBlock, SophyRow, SophyOrb} from './SophyBlock';
 export {Divider} from './Divider';
+export {CastaliaMark, CastaliaWordmark, CastaliaLockup} from './CastaliaMark';

@@ -372,7 +372,7 @@ class NotificationService {
       console.log('Foreground notification:', remoteMessage);
       
       // Show an in-app alert for foreground notifications
-      const title = remoteMessage.notification?.title || 'InkWell';
+      const title = remoteMessage.notification?.title || 'Castalia';
       const body = remoteMessage.notification?.body || '';
       const type = remoteMessage.data?.type;
       

@@ -12,7 +12,8 @@ import {iPadContentStyle} from '../utils/iPad';
 import {APP_VERSION, BUILD_NUMBER} from '../version';
 import {Eyebrow, SophyOrb} from '../components/kit';
 
-const SUPPORT_EMAIL = 'support@inkwelljournal.io';
+// Until support@castaliajournal.com exists (TASKS: Castalia overhaul), support goes to Pegasus Realm.
+const SUPPORT_EMAIL = 'support@pegasusrealm.com';
 
 const TABS: Array<{name: string; text: string}> = [
   {
@@ -41,7 +42,7 @@ export default function InfoScreen() {
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
       <View style={[styles.inner, iPadContentStyle(screenWidth)]}>
-        {/* What InkWell is */}
+        {/* What Castalia is */}
         <Text style={styles.lead}>A journal that remembers, reflects, and grows with you.</Text>
 
         {/* The tabs */}
@@ -95,7 +96,7 @@ export default function InfoScreen() {
 
         <View style={styles.footer}>
           <Text style={styles.footerText}>
-            InkWell {APP_VERSION} (build {BUILD_NUMBER})
+            Castalia {APP_VERSION} (build {BUILD_NUMBER})
           </Text>
           <Text style={styles.footerText}>© 2026 Pegasus Realm LLC</Text>
         </View>

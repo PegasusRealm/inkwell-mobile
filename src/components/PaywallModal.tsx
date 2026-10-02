@@ -167,7 +167,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({visible, onClose, onPurchase
       await SubscriptionService.purchasePackage(selected);
       if (trial) markTrialStarted();
       await refreshSubscriptionStatus();
-      Alert.alert('Plus is on', trial ? `Your free days run through ${chargeDate}.` : 'Thanks for supporting InkWell.', [
+      Alert.alert('Plus is on', trial ? `Your free days run through ${chargeDate}.` : 'Thanks for supporting Castalia.', [
         {
           text: 'OK',
           onPress: () => {
@@ -212,7 +212,7 @@ const PaywallModal: React.FC<PaywallModalProps> = ({visible, onClose, onPurchase
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <SafeAreaView style={styles.safe}>
         <View style={styles.top}>
-          <Text style={styles.eyebrow}>INKWELL PLUS</Text>
+          <Text style={styles.eyebrow}>CASTALIA PLUS</Text>
           <TouchableOpacity
             onPress={onClose}
             style={styles.close}

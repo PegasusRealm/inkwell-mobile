@@ -60,7 +60,7 @@ async function saveToAndroidDownloads(name: string, path: string, mimeType: stri
   if (Platform.OS !== 'android' || Number(Platform.Version) < 29) return false;
   try {
     await ReactNativeBlobUtil.MediaCollection.copyToMediaStore(
-      {name, parentFolder: 'InkWell', mimeType} as any,
+      {name, parentFolder: 'Castalia', mimeType} as any,
       'Download',
       path,
     );
@@ -320,7 +320,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
         onPress: async () => {
           await resetOnboarding(); // legacy tip flags cleared too
           FirstStepsService.reset();
-          Alert.alert('Done', 'The tips will show again as you use InkWell.');
+          Alert.alert('Done', 'The tips will show again as you use Castalia.');
         },
       },
     ]);
@@ -592,8 +592,8 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
         setPushEnabled(false);
         setPushPermissionStatus('denied');
         Alert.alert(
-          'Notifications are off for InkWell',
-          'Your phone is blocking InkWell notifications. Open Settings to allow them?',
+          'Notifications are off for Castalia',
+          'Your phone is blocking Castalia notifications. Open Settings to allow them?',
           [
             {text: 'Not now', style: 'cancel'},
             {text: 'Open Settings', onPress: () => notificationService.openSettings()},
@@ -750,7 +750,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
 
       const readableExport = generateReadableExport(exportData);
 
-      const fileName = `InkWell_Export_${new Date().toISOString().split('T')[0]}.txt`;
+      const fileName = `Castalia_Export_${new Date().toISOString().split('T')[0]}.txt`;
       const cacheDir = ReactNativeBlobUtil.fs.dirs.CacheDir;
       const filePath = `${cacheDir}/${fileName}`;
 
@@ -761,11 +761,11 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
       // older phones share the full text instead of the old 500-character preview.
       let where = '';
       if (Platform.OS === 'ios') {
-        await Share.share({title: 'InkWell Journal Export', url: filePath});
+        await Share.share({title: 'Castalia Journal Export', url: filePath});
       } else if (await saveToAndroidDownloads(fileName, filePath, 'text/plain')) {
-        where = `\n\nSaved to your Downloads folder, in InkWell, as ${fileName}.`;
+        where = `\n\nSaved to your Downloads folder, in Castalia, as ${fileName}.`;
       } else {
-        await Share.share({title: 'InkWell Journal Export', message: readableExport});
+        await Share.share({title: 'Castalia Journal Export', message: readableExport});
       }
 
       const counts = `Exported ${plural(journalEntries.length, 'entry', 'entries')} and ${plural(
@@ -779,16 +779,16 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
           text: 'Also as JSON',
           onPress: async () => {
             try {
-              const jsonFileName = `InkWell_Export_${new Date().toISOString().split('T')[0]}.json`;
+              const jsonFileName = `Castalia_Export_${new Date().toISOString().split('T')[0]}.json`;
               const jsonPath = `${cacheDir}/${jsonFileName}`;
               const json = JSON.stringify(exportData, null, 2);
               await ReactNativeBlobUtil.fs.writeFile(jsonPath, json, 'utf8');
               if (Platform.OS === 'ios') {
-                await Share.share({title: 'InkWell Journal Export (JSON)', url: jsonPath});
+                await Share.share({title: 'Castalia Journal Export (JSON)', url: jsonPath});
               } else if (await saveToAndroidDownloads(jsonFileName, jsonPath, 'application/json')) {
-                Alert.alert('Saved', `Saved to your Downloads folder, in InkWell, as ${jsonFileName}.`);
+                Alert.alert('Saved', `Saved to your Downloads folder, in Castalia, as ${jsonFileName}.`);
               } else {
-                await Share.share({title: 'InkWell Journal Export (JSON)', message: json});
+                await Share.share({title: 'Castalia Journal Export (JSON)', message: json});
               }
             } catch (e) {
               console.error('JSON export failed:', e);
@@ -807,7 +807,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
 
   const generateReadableExport = (data: any): string => {
     let text = '═══════════════════════════════════════════\n';
-    text += '           INKWELL JOURNAL EXPORT\n';
+    text += '          CASTALIA JOURNAL EXPORT\n';
     text += '═══════════════════════════════════════════\n\n';
     text += `Export Date: ${new Date().toLocaleDateString()}\n`;
     text += `Account: ${data.exportInfo.userEmail}\n\n`;
@@ -882,7 +882,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
     }
 
     text += '═══════════════════════════════════════════\n';
-    text += '        Thank you for using InkWell\n';
+    text += '        Thank you for using Castalia\n';
     text += '═══════════════════════════════════════════\n';
 
     return text;
@@ -1110,7 +1110,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
               <Row
                 nested
                 title="Open phone settings"
-                subtitle="Your phone is blocking InkWell notifications."
+                subtitle="Your phone is blocking Castalia notifications."
                 chevron
                 onPress={() => notificationService.openSettings()}
               />
@@ -1129,7 +1129,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
               <>
                 <Row
                   title="Text messages"
-                  subtitle="Reminders and insights from InkWell by text."
+                  subtitle="Reminders and insights from Castalia by text."
                   right={
                     <Switch
                       value={smsEnabled}
@@ -1301,7 +1301,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
             <Eyebrow style={styles.eyebrow}>Practice Summary</Eyebrow>
             <View style={styles.block}>
               <Text style={styles.body}>
-                A one-page summary of how you have been using InkWell: days journaled, streaks, and your practice
+                A one-page summary of how you have been using Castalia: days journaled, streaks, and your practice
                 mix. It never includes what you wrote. We email it to you, and only you. Some people forward it to
                 a therapist, coach, or doctor they work with. That part is always your call.
               </Text>
@@ -1355,7 +1355,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
                   onPress={() => Linking.openURL('https://pegasusrealm.com/privacy-policy/')}>
                   Privacy Policy
                 </Text>
-                . InkWell is a wellness journal, not a medical record.
+                . Castalia is a wellness journal, not a medical record.
               </Text>
             </View>
             <Row
@@ -1381,9 +1381,9 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
             <Row title="Delete account" subtitle={DELETE_COPY} danger onPress={() => setDeleteModalVisible(true)} />
           </View>
 
-          {/* ==================== 6. INKWELL PLUS ==================== */}
+          {/* ==================== 6. CASTALIA PLUS ==================== */}
           <View style={styles.section}>
-            <Eyebrow style={styles.eyebrow}>InkWell Plus</Eyebrow>
+            <Eyebrow style={styles.eyebrow}>Castalia Plus</Eyebrow>
             <Row
               title="Your plan"
               subtitle={isPremium && isActive ? 'Active' : undefined}
@@ -1448,7 +1448,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
           <View style={styles.section}>
             <Eyebrow style={styles.eyebrow}>Help and About</Eyebrow>
             <Row
-              title="How InkWell works"
+              title="How Castalia works"
               subtitle="The tabs, Sophy, privacy, and how to reach us."
               chevron
               onPress={() => navigation.navigate('Info')}
@@ -1464,7 +1464,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
           </View>
 
           <View style={styles.footer}>
-            <Text style={styles.footerText}>InkWell by Pegasus Realm</Text>
+            <Text style={styles.footerText}>Castalia by Pegasus Realm</Text>
             <Text style={styles.footerText}>© 2026 All rights reserved</Text>
           </View>
         </View>

@@ -9,6 +9,7 @@ import {useSafeAreaInsets} from 'react-native-safe-area-context';
 import {useTheme} from '../theme/ThemeContext';
 import {fontFamily, spacing} from '../theme';
 import WeeklyActivityDots from './WeeklyActivityDots';
+import {CastaliaLockup} from './kit/CastaliaMark';
 
 interface IdentityBarProps {
   refreshTrigger?: number;
@@ -24,9 +25,7 @@ export const IdentityBar: React.FC<IdentityBarProps> = ({refreshTrigger, right})
         styles.bar,
         {paddingTop: insets.top + spacing.sm, backgroundColor: colors.bgPrimary, borderBottomColor: colors.borderLight},
       ]}>
-      <Text style={[styles.wordmark, {color: colors.fontMain}]}>
-        Ink<Text style={{color: colors.brandPrimary}}>Well</Text>
-      </Text>
+      <CastaliaLockup size={21} />
       <View style={styles.right}>
         {right}
         <WeeklyActivityDots refreshTrigger={refreshTrigger} />

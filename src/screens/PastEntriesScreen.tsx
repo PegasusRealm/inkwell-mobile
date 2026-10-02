@@ -557,7 +557,7 @@ const PastEntriesScreen: React.FC<TabScreenProps<'Entries'>> = ({navigation, rou
 
       // Plus gate: the server answers 200 {upgradeRequired: true}. Open the Plus preview, no error.
       const errorText = typeof data.error === 'string' ? data.error : '';
-      if (data.upgradeRequired || /upgrade|requires? inkwell plus/i.test(errorText)) {
+      if (data.upgradeRequired || /upgrade|requires? (inkwell|castalia) plus/i.test(errorText)) {
         openPaywall();
         return;
       }
