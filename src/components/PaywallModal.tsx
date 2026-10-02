@@ -270,14 +270,14 @@ const PaywallModal: React.FC<PaywallModalProps> = ({visible, onClose, onPurchase
             </View>
           </Preview>
 
-          <Preview title="Gratitude from your own journal" caption="Prompts built from what you've written, and help drafting a gratitude letter." styles={styles} sophy>
+          <Preview title="Help with a gratitude letter" caption="Sophy helps you write to someone who made a difference to you." styles={styles} sophy>
             <View style={styles.sophyCard}>
               <View style={styles.sophyTop}>
                 <SophyOrb size={18} />
-                <Text style={styles.sophyWho}>FROM YOUR JOURNAL</Text>
+                <Text style={styles.sophyWho}>GRATITUDE LETTER</Text>
                 <Text style={styles.example}>Example</Text>
               </View>
-              <Text style={styles.sophyText}>You wrote about the neighbor who returned the ladder. Imagine they had moved away last spring...</Text>
+              <Text style={styles.sophyText}>Dear Ms. Alvarez, I never told you what the extra hour after class meant to me. It changed how I saw myself...</Text>
             </View>
           </Preview>
 

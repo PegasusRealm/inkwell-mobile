@@ -62,7 +62,7 @@ export default function InfoScreen() {
             Sophy
           </Eyebrow>
           <Text style={styles.body}>
-            Sophy is an AI companion. She reads an entry only when you ask her to, or when you turn on her
+            Sophy is an AI companion. She reads your journal only when you ask her to, or when you turn on her
             insights in You. Otherwise she stays quiet.
           </Text>
           <View style={styles.coralRow}>

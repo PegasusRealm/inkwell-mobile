@@ -131,8 +131,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         stripeCustomerId: null,
         stripeSubscriptionId: null,
         insightsPreferences: {
-          weeklyEnabled: true,
-          monthlyEnabled: true,
+          weeklyEnabled: false,
+          monthlyEnabled: false,
           createdAt: firestore.FieldValue.serverTimestamp(),
         },
         needsProfileCompletion: isNewUser, // Flag for new OAuth users
@@ -251,8 +251,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
         stripeCustomerId: null,
         stripeSubscriptionId: null,
         insightsPreferences: {
-          weeklyEnabled: true,
-          monthlyEnabled: true,
+          weeklyEnabled: false,
+          monthlyEnabled: false,
           createdAt: firestore.FieldValue.serverTimestamp(),
         },
         needsProfileCompletion: isNewUser, // Flag for new OAuth users
@@ -423,8 +423,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({onLoginSuccess}) => {
           stripeCustomerId: null,
           stripeSubscriptionId: null,
           insightsPreferences: {
-            weeklyEnabled: true,
-            monthlyEnabled: true,
+            weeklyEnabled: false,
+            monthlyEnabled: false,
             createdAt: firestore.FieldValue.serverTimestamp(),
           },
           onboardingState: {

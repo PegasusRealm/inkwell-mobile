@@ -418,8 +418,8 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
       const userDoc = await firestore().collection('users').doc(user.uid).get();
       const userData = userDoc.data();
       if (userData?.insightsPreferences) {
-        setWeeklyInsightsEnabled(userData.insightsPreferences.weeklyEnabled !== false);
-        setMonthlyInsightsEnabled(userData.insightsPreferences.monthlyEnabled !== false);
+        setWeeklyInsightsEnabled(userData.insightsPreferences.weeklyEnabled === true);
+        setMonthlyInsightsEnabled(userData.insightsPreferences.monthlyEnabled === true);
       }
     } catch (error) {
       console.error('Error loading insights preferences:', error);
@@ -1337,7 +1337,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
                 Nothing you write is sold, shared with advertisers, or used to train AI models.
               </Text>
               <Text style={styles.privacyLine}>
-                Sophy reads an entry only when you ask her to, or when you turn on her insights above. Her AI
+                Sophy reads your journal only when you ask her to, or when you turn on her insights above. Her AI
                 providers process it to respond and do not keep it to train on.
               </Text>
               <Text style={styles.privacyLine}>
