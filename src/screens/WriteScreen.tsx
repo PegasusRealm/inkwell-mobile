@@ -140,7 +140,9 @@ const MODE_PRACTICE: Record<WriteMode, Practice> = {
   reframe: 'reframe',
   inkblot: 'inkblot',
 };
-const MODES: WriteMode[] = ['free', 'sprint', 'gratitude', 'reframe', 'inkblot'];
+// InkBlot retired 2026-10-01 (Adam): Today's page and Sprint already cover quick capture. Its code
+// stays until the 2.0 options pass removes it; old InkBlot entries still read normally in Entries.
+const MODES: WriteMode[] = ['free', 'sprint', 'gratitude', 'reframe'];
 
 // ═══════════════════════════════════════════════════════════════════════════
 // FEEL CHECK — optional 1-5 "how heavy" before writing. LAW: a self-rated feel,

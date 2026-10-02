@@ -64,7 +64,6 @@ const WAYS: Array<{mode: WriteMode; label: string}> = [
   {mode: 'sprint', label: 'Sprint'},
   {mode: 'gratitude', label: 'Gratitude'},
   {mode: 'reframe', label: 'Reframe'},
-  {mode: 'inkblot', label: 'InkBlot'},
 ];
 
 const PRACTICE_NAME: Record<string, string> = {

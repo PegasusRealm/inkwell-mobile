@@ -18,7 +18,7 @@ const SUPPORT_EMAIL = 'support@pegasusrealm.com';
 const TABS: Array<{name: string; text: string}> = [
   {
     name: 'Today',
-    text: 'Where you write. One question to start from, and a few ways in: free-write, sprint, gratitude, reframe, InkBlot, or just speak it.',
+    text: 'Where you write. One question to start from, and a few ways in: free-write, sprint, gratitude, reframe, or just speak it.',
   },
   {
     name: 'Entries',
