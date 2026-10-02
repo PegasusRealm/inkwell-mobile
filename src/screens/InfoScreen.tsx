@@ -166,8 +166,8 @@ const createStyles = (colors: ThemeColors) =>
       fontFamily: fontFamily.button,
       fontSize: 15,
       lineHeight: 21,
-      // accentReflection is Sophy's coral tuned per theme (deeper on light ground for contrast)
-      color: colors.accentReflection,
+      // Sophy's text coral, tuned per theme (deep on light ground for contrast)
+      color: colors.sophyLight,
     },
     link: {
       fontFamily: fontFamily.button,

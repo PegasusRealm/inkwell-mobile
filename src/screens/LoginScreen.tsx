@@ -730,7 +730,7 @@ const createStyles = (colors: ThemeColors) => StyleSheet.create({
   subtitleEm: {
     fontFamily: fontFamily.serifItalic,
     fontStyle: 'italic',
-    color: colors.brandLight,
+    color: colors.brandEm,
   },
   trustLine: {
     fontFamily: fontFamily.body,

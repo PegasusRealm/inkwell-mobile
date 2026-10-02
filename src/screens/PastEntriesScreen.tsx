@@ -1141,7 +1141,7 @@ const createStyles = (colors: ThemeColors) =>
       fontFamily: fontFamily.bodyBold,
       fontSize: 13,
       letterSpacing: 1,
-      color: colors.sophyAccent,
+      color: colors.sophyLight,
     },
     monthSub: {
       fontFamily: fontFamily.body,

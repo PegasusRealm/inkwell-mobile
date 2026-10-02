@@ -1852,7 +1852,7 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
     questionEm: {
       fontFamily: fontFamily.headerItalic,
       fontStyle: 'italic',
-      color: colors.brandLight,
+      color: colors.brandEm,
     },
 
     // ── Pills ──

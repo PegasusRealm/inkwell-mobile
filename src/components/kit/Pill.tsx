@@ -1,6 +1,7 @@
 /**
  * Pill — quiet selector, one voice (web .grat-pill contract).
- * Active: solid teal, white text. Optional coral today-dot (gratitude nudge).
+ * Active: solid teal, white text. Optional teal today-dot (gratitude nudge). v2.0: teal, not coral;
+ * coral is Sophy's alone. A ring in the page color keeps the dot visible on any pill.
  */
 import React from 'react';
 import {Pressable, Text, View, StyleSheet, ViewStyle} from 'react-native';
@@ -35,7 +36,11 @@ export const Pill: React.FC<PillProps> = ({label, active, onPress, showDot, styl
         ]}>
         {label}
       </Text>
-      {showDot && <View style={[styles.dot, {backgroundColor: colors.sophyLight}]} />}
+      {showDot && (
+        <View
+          style={[styles.dot, {backgroundColor: active ? colors.brandLight : colors.brandPrimary, borderColor: colors.bgPrimary}]}
+        />
+      )}
     </Pressable>
   );
 };
@@ -52,10 +57,11 @@ const styles = StyleSheet.create({
   label: {fontFamily: fontFamily.button, fontSize: 14, lineHeight: 17},
   dot: {
     position: 'absolute',
-    top: -3,
-    right: -3,
-    width: 9,
-    height: 9,
-    borderRadius: 5,
+    top: -4,
+    right: -4,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
   },
 });

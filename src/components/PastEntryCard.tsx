@@ -300,7 +300,7 @@ const createStyles = (colors: ThemeColors) =>
       width: 6,
       height: 6,
       borderRadius: 3,
-      backgroundColor: colors.sophyLight,
+      backgroundColor: colors.sophyOrb,
     },
     sophyMarkText: {
       fontFamily: fontFamily.button,
@@ -354,7 +354,7 @@ const createStyles = (colors: ThemeColors) =>
       fontFamily: fontFamily.buttonBold,
     },
     sophyToggleText: {
-      color: colors.sophyAccent,
+      color: colors.sophyLight,
       fontSize: 15,
       fontFamily: fontFamily.buttonBold,
     },

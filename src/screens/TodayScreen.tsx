@@ -314,7 +314,7 @@ const createStyles = (colors: ThemeColors) =>
     content: {padding: spacing.lg, gap: spacing.xl},
     date: {fontFamily: fontFamily.bodyBold, fontSize: 15, letterSpacing: 1.6, color: colors.fontMuted, marginBottom: -spacing.lg},
     question: {fontFamily: fontFamily.header, fontSize: 32, lineHeight: 38, color: colors.fontMain},
-    questionEm: {fontFamily: fontFamily.headerItalic, fontStyle: 'italic', color: colors.brandLight},
+    questionEm: {fontFamily: fontFamily.headerItalic, fontStyle: 'italic', color: colors.brandEm},
     start: {
       backgroundColor: colors.bgCard,
       borderWidth: 1,

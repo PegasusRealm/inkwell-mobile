@@ -24,6 +24,9 @@ export const lightColors = {
   brandSecondary: '#1E8A99',
   brandAlt: '#4A9BA8',
   brandLight: '#89C9D4',
+  // v2.0: the teal italic emphasis word in headings (Today's question, Login). Light teal
+  // read at 1.7:1 on light ground; this mid teal clears 3:1 for large text on light and Reading.
+  brandEm: '#1F7F8C',
   brandOutline: '#43514E',
   brandPrimaryRgba: 'rgba(42, 105, 114, 0.3)',
 
@@ -58,7 +61,11 @@ export const lightColors = {
   tierConnectLight: '#89C9D4',
 
   sophyAccent: '#C96F5E',
-  sophyLight: '#D49489',
+  // v2.0: sophyLight is Sophy's TEXT color. On light ground the brand coral read at about 2.3:1,
+  // so her words use a deep coral (4.5:1 or better on white, light, Reading and her tint).
+  // Her orb and dots keep the brand coral (sophyOrb).
+  sophyLight: '#9E4E41',
+  sophyOrb: '#D49489',
   sophyHover: '#B85F4F',
   sophyTint: 'rgba(212, 148, 137, 0.10)',
   sophyBorder: 'rgba(212, 148, 137, 0.25)',
@@ -89,6 +96,7 @@ export const darkColors: typeof lightColors = {
   brandSecondary: '#7BC4CE',
   brandAlt: '#4A9BA8',
   brandLight: '#89C9D4',
+  brandEm: '#89C9D4',
   brandOutline: '#9BA6A3',
   brandPrimaryRgba: 'rgba(95, 179, 191, 0.3)',
 
@@ -124,6 +132,7 @@ export const darkColors: typeof lightColors = {
 
   sophyAccent: '#D49489',
   sophyLight: '#E6A497',
+  sophyOrb: '#E6A497',
   sophyHover: '#C2867D',
   sophyTint: 'rgba(212, 148, 137, 0.14)',
   sophyBorder: 'rgba(212, 148, 137, 0.25)',

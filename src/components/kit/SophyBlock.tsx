@@ -36,7 +36,7 @@ export const SophyOrb: React.FC<{size?: number}> = ({size = 28}) => {
           StyleSheet.absoluteFillObject,
           {
             borderRadius: size / 2,
-            backgroundColor: colors.sophyLight,
+            backgroundColor: colors.sophyOrb,
             transform: [{scale: haloScale}],
             opacity: haloOpacity,
           },
@@ -47,7 +47,7 @@ export const SophyOrb: React.FC<{size?: number}> = ({size = 28}) => {
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: colors.sophyLight,
+          backgroundColor: colors.sophyOrb,
         }}>
         <View
           style={{
