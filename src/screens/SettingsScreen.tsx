@@ -1129,7 +1129,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
               <>
                 <Row
                   title="Text messages"
-                  subtitle="Prompts, gratitude reminders, goal milestones, a weekly summary, and coach replies by text. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help."
+                  subtitle="Prompts, gratitude reminders, goal milestones, and a weekly summary by text. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help."
                   right={
                     <Switch
                       value={smsEnabled}
