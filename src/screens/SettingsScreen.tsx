@@ -1129,7 +1129,7 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
               <>
                 <Row
                   title="Text messages"
-                  subtitle="Reminders and insights from Castalia by text."
+                  subtitle="Prompts, gratitude reminders, goal milestones, a weekly summary, and coach replies by text. Message frequency varies. Message and data rates may apply. Reply STOP to opt out or HELP for help."
                   right={
                     <Switch
                       value={smsEnabled}
@@ -1139,6 +1139,14 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
                     />
                   }
                 />
+                <Text style={styles.smsTerms}>
+                  <Text
+                    style={styles.link}
+                    accessibilityRole="link"
+                    onPress={() => Linking.openURL('https://castaliajournal.com/SMSpolicy')}>
+                    Text message terms
+                  </Text>
+                </Text>
                 {smsEnabled && (
                   <View style={styles.nestedBlock}>
                     <Text style={styles.fieldLabel}>Phone number</Text>
@@ -1212,24 +1220,24 @@ export default function SettingsScreen({navigation}: TabScreenProps<'You'>) {
                     />
                     <Row
                       nested
-                      title="Daily gratitude from Sophy"
+                      title="Daily gratitude reminders"
                       right={
                         <Switch
                           value={smsGratitudePrompts}
                           onValueChange={setSmsGratitudePrompts}
-                          accessibilityLabel="Daily gratitude from Sophy by text"
+                          accessibilityLabel="Daily gratitude reminders by text"
                           {...switchColors(smsGratitudePrompts)}
                         />
                       }
                     />
                     <Row
                       nested
-                      title="Weekly insights"
+                      title="Weekly summary"
                       right={
                         <Switch
                           value={smsWeeklyInsights}
                           onValueChange={setSmsWeeklyInsights}
-                          accessibilityLabel="Weekly insights by text"
+                          accessibilityLabel="Weekly summary by text"
                           {...switchColors(smsWeeklyInsights)}
                         />
                       }
@@ -1586,6 +1594,12 @@ const createStyles = (colors: ThemeColors) =>
       lineHeight: 21,
       color: colors.fontMuted,
       marginTop: spacing.sm,
+    },
+    smsTerms: {
+      fontFamily: fontFamily.body,
+      fontSize: 15,
+      lineHeight: 21,
+      marginBottom: spacing.md,
     },
     status: {
       fontFamily: fontFamily.body,
