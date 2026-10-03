@@ -208,7 +208,7 @@ class SubscriptionService {
   /**
    * Get current subscription status
    * PRIORITY ORDER:
-   * 1. Firestore admin override / beta tier (trust backend)
+   * 1. Firestore tier set by the server, an admin, or alpha status (trust backend)
    * 2. RevenueCat (paying customers)
    * 3. Free tier
    */
@@ -217,7 +217,7 @@ class SubscriptionService {
       const userId = auth().currentUser?.uid;
       
       // FIRST: Check Firestore for admin override or backend-set tier
-      // This takes priority because admin/beta overrides should work without RevenueCat
+      // This takes priority because server-set, admin-set and alpha access work without RevenueCat
       if (userId) {
         try {
           const userDoc = await firestore().collection('users').doc(userId).get();
@@ -226,9 +226,11 @@ class SubscriptionService {
           if (userData) {
             const adminOverrideTier = userData.betaProgress?.tierOverride?.tier;
             const firestoreTier = userData.subscriptionTier;
-            const specialCode = userData.special_code;
-            const freeTrialEnds = userData.freeTrialEnds;
-            const isBetaTester = ['alpha', 'beta'].includes(specialCode);
+            // Alpha testers have Plus free for life (founding note, Oct 2026), same test as
+            // the server's hasPlusAccess. Beta testers' deal is 50% off Plus for life, applied
+            // at checkout on the web, so 'beta' no longer means free Plus here (2026-10-03, Adam).
+            const isAlpha = userData.special_code === 'alpha' || userData.role === 'alpha' ||
+              (Array.isArray(userData.roles) && userData.roles.includes('alpha'));
             
             // Check for admin override tier (highest priority)
             if (adminOverrideTier && ['plus', 'connect'].includes(adminOverrideTier)) {
@@ -241,7 +243,7 @@ class SubscriptionService {
               };
             }
             
-            // Check Firestore subscriptionTier directly (beta users, admin-set)
+            // Check Firestore subscriptionTier directly (set by the server or an admin)
             // FIXED: Trust the tier if set, don't require subscriptionStatus
             if (firestoreTier && ['plus', 'connect'].includes(firestoreTier)) {
               console.log('🔓 Using Firestore tier:', firestoreTier);
@@ -253,33 +255,8 @@ class SubscriptionService {
               };
             }
             
-            // Check for alpha/beta tester free trial period
-            // Alpha: 6 months free, Beta: 3 months free
-            if (isBetaTester && freeTrialEnds) {
-              const trialEndDate = freeTrialEnds.toDate ? freeTrialEnds.toDate() : new Date(freeTrialEnds);
-              const now = new Date();
-              
-              if (now < trialEndDate) {
-                console.log('🔓 Alpha/Beta free trial active until:', trialEndDate.toISOString());
-                return {
-                  tier: 'plus',
-                  isActive: true,
-                  willRenew: false,
-                  platform: 'stripe',
-                  // Build-83 rot fix 2026-07-04: was `expiresAt` (typo, not in
-                  // the SubscriptionStatus interface, nothing consumed it)
-                  expirationDate: trialEndDate,
-                };
-              } else {
-                console.log('⏰ Alpha/Beta free trial expired:', trialEndDate.toISOString());
-                // Trial expired - they need to subscribe at discounted rate
-              }
-            }
-            
-            // Legacy: Check for beta tester status without freeTrialEnds (grants Plus)
-            // This supports existing testers until we migrate them
-            if (isBetaTester && !freeTrialEnds) {
-              console.log('🔓 Legacy beta tester detected, granting Plus access');
+            if (isAlpha) {
+              console.log('🔓 Alpha tester: Plus for life');
               return {
                 tier: 'plus',
                 isActive: true,
