@@ -363,76 +363,13 @@ class SubscriptionService {
   }
 
   /**
-   * Sync subscription status with Firestore
-   * This keeps the backend in sync with IAP subscriptions
-   * IMPORTANT: Respects admin overrides (betaProgress.tierOverride)
+   * No longer writes anything. Kept so existing callers stay unchanged.
    */
-  async syncSubscriptionStatus(customerInfo?: CustomerInfo): Promise<void> {
-    try {
-      const userId = auth().currentUser?.uid;
-      if (!userId) {
-        console.warn('⚠️ No authenticated user to sync subscription');
-        return;
-      }
-
-      // Check for admin override FIRST - don't overwrite if admin set a tier
-      const userDoc = await firestore().collection('users').doc(userId).get();
-      const userData = userDoc.data();
-      
-      const hasAdminOverride = userData?.betaProgress?.tierOverride?.tier;
-      const specialCode = userData?.special_code;
-      const isBetaTester = ['alpha', 'beta'].includes(specialCode);
-      
-      // If user has admin override or is a beta tester, preserve their tier
-      if (hasAdminOverride || isBetaTester) {
-        console.log('🔒 User has admin override or beta status, preserving tier:', 
-          hasAdminOverride || (isBetaTester ? 'plus (beta)' : 'free'));
-        
-        // Still update non-tier fields if there's an active IAP
-        const info = customerInfo || await Purchases.getCustomerInfo();
-        const status = this.parseSubscriptionStatus(info);
-        
-        // Only update tier if RevenueCat says they have a HIGHER tier (actual purchase)
-        const tierRank = { free: 0, plus: 1, connect: 2 };
-        const currentTier = userData?.subscriptionTier || 'free';
-        const overrideTier = hasAdminOverride || (isBetaTester ? 'plus' : 'free');
-        const rcTier = status.tier;
-        
-        // Use the highest tier available
-        const effectiveTier = [currentTier, overrideTier, rcTier].reduce((highest, t) => 
-          tierRank[t as SubscriptionTier] > tierRank[highest as SubscriptionTier] ? t : highest
-        );
-        
-        await firestore().collection('users').doc(userId).update({
-          subscriptionTier: effectiveTier,
-          subscriptionStatus: 'active', // Beta/override users are always active
-          subscriptionPlatform: status.tier !== 'free' ? (status.platform || 'unknown') : (userData?.subscriptionPlatform || 'admin'),
-          updatedAt: firestore.FieldValue.serverTimestamp(),
-        });
-        
-        console.log('✅ Synced subscription (with override) to Firestore:', effectiveTier);
-        return;
-      }
-
-      // No admin override - use RevenueCat status directly
-      const info = customerInfo || await Purchases.getCustomerInfo();
-      const status = this.parseSubscriptionStatus(info);
-      
-      // Update Firestore user document
-      await firestore().collection('users').doc(userId).update({
-        subscriptionTier: status.tier,
-        subscriptionStatus: status.isActive ? 'active' : 'inactive',
-        subscriptionPlatform: status.platform || 'unknown',
-        subscriptionExpiresAt: status.expirationDate ? firestore.Timestamp.fromDate(status.expirationDate) : null,
-        subscriptionWillRenew: status.willRenew,
-        updatedAt: firestore.FieldValue.serverTimestamp(),
-      });
-      
-      console.log('✅ Synced subscription to Firestore:', status.tier);
-      
-    } catch (error) {
-      console.error('❌ Failed to sync subscription status:', error);
-    }
+  async syncSubscriptionStatus(_customerInfo?: CustomerInfo): Promise<void> {
+    // 2026-10-03: the server owns the tier now. RevenueCat reports every purchase,
+    // renewal and expiry to our server (revenuecatWebhook), and the Firestore rules
+    // refuse a paid tier written from the phone. Writing it here also stepped web
+    // (Stripe) subscribers down to free whenever they opened the app.
   }
 
   /**
