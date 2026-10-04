@@ -21,10 +21,14 @@ import {Platform} from 'react-native';
 // Builds 84/88: the Castalia rename and new icon (83/87 may already be on TestFlight or Play internal).
 // 26.274.2, builds 85/89 (2026-10-01): options pass (Adam): three ways in, the timer on the page, three
 // gratitude practices, one-start goals, rename card. New feature state, so a new version string.
+// iOS build 86 (2026-10-03): build 85 opened to the error screen on every iPhone. Info.plist had no
+// RCTNewArchEnabled key, so RN 0.81 turned the New Architecture on at launch while every native module
+// was compiled for the old one (Podfile RCT_NEW_ARCH_ENABLED=0). EAS works under a build/ path that
+// pod install skips when it writes that key, so the key is now set to false in the repo. Android unaffected.
 export const APP_VERSION = '26.274.2';
 
 export const BUILD_NUMBER = Platform.select({
-  ios: '85',
+  ios: '86',
   android: '89',
   default: '0',
 });
