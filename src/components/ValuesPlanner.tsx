@@ -6,6 +6,9 @@
  * Gollwitzer). LAW: FREE-tier flow — no gating anywhere in this component.
  * State persists to users/{uid}.valuesPlanner (debounced) so the ritual can
  * span days; completed runs archive to valuesPlannerHistory (capped 20).
+ * Copy 2026-10-10 (Adam approved; Bruce + Phil PASS): "Before you start" card on a
+ * brand-new plan, one "why" line per step, new step 3/4/6 instructions. Single
+ * source: Claude-HQ/Projects/apps/VALUES-PLANNER-COPY.md (Castalia variants).
  */
 import React, {useState, useEffect, useRef, useMemo, useCallback} from 'react';
 import {
@@ -41,18 +44,36 @@ interface VpState {
   done: boolean;
   completedAt?: string;
   dedupeOk?: boolean;
+  introSeen?: boolean; // 2026-10-10: the "Before you start" card shows once, on a brand-new plan
 }
 
 const VP_STAGES: VpStage[] = ['values', 'rank', 'vision', 'brainstorm', 'evaluate', 'handoff'];
 
-// Step labels verbatim from web VP_LABELS
+// Step labels (renamed 2026-10-10 to match what steps 5 and 6 actually do)
 const VP_LABELS: Record<VpStage, string> = {
   values: 'Step 1 of 6, Your values',
   rank: 'Step 2 of 6, Rank your top values',
   vision: 'Step 3 of 6, A day in your life, 15 years from now',
   brainstorm: 'Step 4 of 6, Brainstorm',
-  evaluate: 'Step 5 of 6, Choose one',
-  handoff: 'Step 6 of 6, Into your goal',
+  evaluate: 'Step 5 of 6, Weigh your top 3',
+  handoff: 'Step 6 of 6, Choose one',
+};
+
+// Directions copy (approved 2026-10-10). Castalia variant: no "Pegasus Realm" in the intro.
+const VP_INTRO: string[] = [
+  'Change can leave anyone asking, "Now what?" This planner is built for that moment. It helps you get clear on what matters most to you right now, then turns it into a plan with a real first step toward the life you want.',
+  'It pulls from goal research and from coaching practice. Once you\'ve done it, the process is yours to use again, whole or in parts, any time you\'re facing a big change. It becomes your own way to turn a "now what?" into a clear next step.',
+  "Some steps may feel odd. That's on purpose: they stretch your thinking. Stay with it. It comes together at the end.",
+];
+
+// One "why" line per step, its own text line above the instruction
+const VP_WHY: Partial<Record<VpStage, string>> = {
+  values: 'We start wide, with your values: the big things that guide how you want to live. The rest of your plan builds on them.',
+  rank: 'When two values pull in different directions, your ranking shows which one leads.',
+  vision:
+    'Now picture where those values lead. Imagining one simple, good day 15 years from now makes it easier to see what matters today.',
+  brainstorm: 'Nothing gets a "no" here. Any idea, even a goofy one, could hold the seed of your goal.',
+  evaluate: 'Time to narrow down. Honest pros and cons now keep you from chasing the wrong goal later.',
 };
 
 const vpDefault = (): VpState => ({
@@ -67,6 +88,7 @@ const vpDefault = (): VpState => ({
   notes: {},
   chosen: '',
   done: false,
+  introSeen: false,
 });
 
 interface ValuesPlannerProps {
@@ -107,6 +129,15 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
           const saved = snap.data()?.valuesPlanner;
           if (saved) {
             next = {...vpDefault(), ...saved};
+            const hasProgress =
+              next.done ||
+              next.stage !== 'values' ||
+              next.round > 1 ||
+              (next.selected || []).length > 0 ||
+              (next.ranked || []).length > 0 ||
+              (next.vision || '').trim().length > 0 ||
+              (next.ideas || []).length > 0;
+            if (!next.introSeen && hasProgress) next.introSeen = true;
           }
         }
       } catch (e: any) {
@@ -525,6 +556,38 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
     );
   }
 
+  // ── "Before you start": brand-new plans only (fresh, or after "start fresh"); never
+  // shown to a plan already in progress, even one saved before introSeen existed ──
+  const brandNew =
+    !vp.introSeen &&
+    !vp.done &&
+    vp.stage === 'values' &&
+    vp.round === 1 &&
+    !(vp.selected || []).length &&
+    !(vp.ranked || []).length &&
+    !(vp.vision || '').trim() &&
+    !(vp.ideas || []).length;
+  if (brandNew) {
+    return (
+      <View>
+        <Text style={styles.introTitle} accessibilityRole="header">
+          Before you start
+        </Text>
+        {VP_INTRO.map((p, i) => (
+          <Text key={i} style={styles.introPara}>
+            {p}
+          </Text>
+        ))}
+        <View style={styles.footerRow}>
+          <IWButton voice="gray" small title="Not now" onPress={onClose} />
+          <IWButton small title="Start" onPress={() => mutate(prev => ({...prev, introSeen: true}))} />
+        </View>
+      </View>
+    );
+  }
+
+  const why = VP_WHY[vp.stage];
+
   return (
     <View>
       {/* Header: step label + save & close */}
@@ -534,6 +597,7 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
           <Text style={styles.exitLink}>save & close</Text>
         </TouchableOpacity>
       </View>
+      {why ? <Text style={styles.why}>{why}</Text> : null}
 
       {/* ═══ Step 1: values ═══ */}
       {vp.stage === 'values' && (
@@ -598,8 +662,8 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
       {vp.stage === 'vision' && (
         <View>
           <Text style={styles.intro}>
-            Your top values got to lead for 15 years. Write one ordinary day in that life, waking up to falling
-            asleep. Present tense. Use your senses. One real day, not a highlight reel.
+            Write that day as if it's happening now. Where are you, who's there, what are you doing? Present
+            tense, real detail. There's no wrong answer here. A few sentences is plenty.
           </Text>
           <TextInput
             style={styles.visionInput}
@@ -629,8 +693,9 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
       {vp.stage === 'brainstorm' && (
         <View>
           <Text style={styles.intro}>
-            List anything that could move your real life toward that day. Twenty or more. The first ten are the
-            obvious ones. The stupid, silly, impossible ones after that are the whole point. No filtering.
+            List everything that could move your life toward that day. You'll need at least 20 different ideas
+            to move on. Be goofy. What would your aunt suggest? Your sophomore science teacher? No idea is too
+            small.
           </Text>
           <View style={styles.ideaInputRow}>
             <TextInput
@@ -735,7 +800,11 @@ const ValuesPlanner: React.FC<ValuesPlannerProps> = ({onClose, onHandoff}) => {
       {/* ═══ Step 6: handoff ═══ */}
       {vp.stage === 'handoff' && (
         <View>
-          <Text style={styles.intro}>Pick the one that survived. It becomes your goal.</Text>
+          <Text style={styles.intro}>
+            Pick the one that becomes your goal, the one you'd regret not trying. Your plan covers 90 days or
+            less, so it stays close enough to act on. If your idea is bigger, you'll pick its first 90-day piece
+            in the next step.
+          </Text>
           {vp.top3.map(idea => (
             <TouchableOpacity
               key={idea}
@@ -824,6 +893,27 @@ const createStyles = (colors: ThemeColors) =>
       fontSize: fontSize.sm,
       color: colors.fontSecondary,
       lineHeight: 21,
+      marginBottom: spacing.md,
+    },
+    why: {
+      fontFamily: fontFamily.body,
+      fontSize: fontSize.base,
+      color: colors.fontMain,
+      lineHeight: 22,
+      marginBottom: spacing.sm,
+    },
+    introTitle: {
+      fontFamily: fontFamily.header,
+      fontSize: 22,
+      lineHeight: 28,
+      color: colors.fontMain,
+      marginBottom: spacing.md,
+    },
+    introPara: {
+      fontFamily: fontFamily.body,
+      fontSize: fontSize.base,
+      color: colors.fontSecondary,
+      lineHeight: 22,
       marginBottom: spacing.md,
     },
     valuesListWrap: {

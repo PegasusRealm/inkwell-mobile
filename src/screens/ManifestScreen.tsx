@@ -11,7 +11,11 @@
  *                  Yes      -> the four steps (Want / Imagine / Snags / How)
  *                  Not sure -> the values planner, which hands its pick to the Want.
  * The builder ends with one "Check my plan with Sophy" (the whole plan, not each step).
- * WISH (the four steps' initials) is named once, in "Why this works". Data keys are unchanged.
+ * WISH is named in the builder intro and in "Why this works". Data keys are unchanged.
+ * Copy 2026-10-10 (Adam approved; Bruce + Phil PASS): each step's hint is visible text above
+ * its box (never a placeholder: the planner fills Want in advance, which would hide it), a
+ * timeline hint, and a one-time recap on the first save after the planner hands off a goal.
+ * Single source: Claude-HQ/Projects/apps/VALUES-PLANNER-COPY.md.
  *
  * Data is untouched by the re-skin: manifests/{uid} and the AsyncStorage keys
  * manifest_ / wishStart_ / wishTimeline_ are read and written exactly as
@@ -56,39 +60,43 @@ type WishTexts = Record<WishSection, string>;
 const EMPTY_WISH: WishTexts = {want: '', imagine: '', snags: '', how: ''};
 const WISH_KEYS: WishSection[] = ['want', 'imagine', 'snags', 'how'];
 
-// Builder copy (web app.html manifest tab)
+// Builder copy (approved 2026-10-10). Hints are visible text, never placeholders.
 const WISH_SECTIONS: Array<{
   key: WishSection;
   heading: string;
-  placeholder: string;
+  hint: string;
   tip?: string;
 }> = [
   {
     key: 'want',
     heading: 'Want',
-    placeholder:
-      'Name the goal you want most right now. Keep it specific, meaningful, and within reach.\n\nExample: Walk 30 minutes every weekday.',
+    hint:
+      'Be specific. "More money" is hard to aim at. "Put $300 into savings each month for the next 3 months" is something you can hit. So is "Walk 20 minutes, 4 days a week." If your goal will take longer than 90 days, write its first 90-day piece here. If you use SMART goals, put your whole SMART goal here.',
   },
   {
     key: 'imagine',
     heading: 'Imagine',
-    placeholder:
-      'Describe the best thing about reaching this goal. How will it feel? What gets better? Write it like it already happened, with real detail.',
+    hint:
+      'It may feel a little silly. It\'s worth it. This is the picture to come back to when the work gets hard. Picture the moment you reach your goal, using your senses and your feelings. What do you see, hear, smell, and taste? How do you feel? Example: "I\'m sitting by a pool with the sun bright on the water. Music is playing. I smell sunscreen, and I\'m eating my favorite meal to celebrate hitting my goal. I feel proud, excited about what\'s next, and grateful for the work I put in." Make it feel real.',
   },
   {
     key: 'snags',
     heading: 'Snags',
-    placeholder:
-      'List what could get in your way. Look inside first: habits, moods, and excuses count as much as outside problems.\n\nExample: I stay up too late, so I skip my morning walk.',
+    hint:
+      'We all get in our own way. It\'s part of being human. What are your go-to snags? Putting things off? Self-doubt? Guilt? Name the ones most likely to show up. Spotting them now means they\'re less likely to catch you off guard.',
   },
   {
     key: 'how',
     heading: 'How',
-    placeholder:
-      'Write an if-then plan for each snag, and tie it to something you already do daily.\n\nExample: If it hits 9 pm, then I plug my phone in across the room.',
-    tip: 'Tip: anchor new habits to ones you already have. "After I [pour my coffee], I will [write one line]."',
+    hint:
+      'Write an if-then plan for each snag. Example: "If I notice I\'m putting it off, then I\'ll break the task into 3 to 5 steps and put each one on my calendar with an alarm." Where you can, hook your plan to something you already do each day.',
   },
 ];
+
+// Shown once, on the first save after the planner hands off a goal (Castalia has no
+// planner completion screen; not shown on the "Yes, I know" path)
+const PLAN_RECAP =
+  'Look at what you have now: a realistic goal you can act on in the next few months, built on your values and pointed at the future you want. You made this plan. Now it\'s time to work it. And you now know how to turn a "now what?" into a clear next step, anytime you need to.';
 
 const hasAnyText = (w: WishTexts | null) => !!w && WISH_KEYS.some(k => w[k].trim().length > 0);
 
@@ -163,6 +171,10 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
   // Planner state
   const [plannerOpen, setPlannerOpen] = useState(false);
   const [plannerResumeNote, setPlannerResumeNote] = useState('');
+  // The planner handed off a goal that has not been saved yet; the next save shows the recap
+  const recapPendingRef = useRef(false);
+  const [recap, setRecap] = useState('');
+  useFocusEffect(useCallback(() => () => setRecap(''), []));
 
   const hasWish = hasAnyText(savedWish);
 
@@ -207,6 +219,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
   const handlePlannerHandoff = (chosen: string) => {
     setPlannerResumeNote('Last time you chose "' + chosen + '". Walk it again anytime.');
     const takeIt = () => {
+      recapPendingRef.current = true;
       setWishText('want', chosen);
       if (hasWish) setEditing(true);
       else setStartPath('know');
@@ -350,6 +363,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     setWishTexts(savedWish ?? EMPTY_WISH);
     setPlanCheck('');
     setSaveStatus('');
+    setRecap('');
     setEditing(true);
     scrollToTop();
   };
@@ -357,6 +371,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
   const cancelEditing = () => {
     const base = savedWish ?? EMPTY_WISH;
     const close = () => {
+      recapPendingRef.current = false;
       setWishTexts(base);
       setPlanCheck('');
       setEditing(false);
@@ -429,6 +444,10 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
       setStartPath(null);
       scrollToTop();
 
+      if (recapPendingRef.current) {
+        recapPendingRef.current = false;
+        setRecap(PLAN_RECAP);
+      }
       setSaveStatus("Saved. You're building something meaningful.");
       setTimeout(() => setSaveStatus(''), 4000);
       FirstStepsService.complete('wish');
@@ -499,6 +518,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     setEditing(false);
     setStartPath(null);
     setSaveStatus('');
+    setRecap('');
     setWishStartDate(null);
     setWishTimeline(60);
     setDayNumber(1);
@@ -531,6 +551,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
     const how = savedWish.how.trim();
     return (
       <Card style={[styles.sectionCard, styles.wishCard]}>
+        {recap ? <Text style={styles.recapText}>{recap}</Text> : null}
         <Eyebrow style={styles.eyebrow}>Your goal</Eyebrow>
 
         {want ? (
@@ -604,16 +625,17 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
   const renderBuilder = () => (
     <Card style={styles.sectionCard}>
       <Eyebrow style={styles.eyebrow}>{hasWish ? 'Edit your goal' : 'Your goal'}</Eyebrow>
-      <Text style={styles.builderIntro}>Four steps. Write them in your own words.</Text>
+      <Text style={styles.builderIntro}>
+        WISH turns your goal into a plan: Want, Imagine, Snags, How. Take your time here.
+      </Text>
 
       {WISH_SECTIONS.map((section, index) => (
         <View key={section.key}>
           {index > 0 ? <Divider /> : <View style={styles.builderTopGap} />}
           <Text style={styles.sectionHeading}>{section.heading}</Text>
+          <Text style={styles.hintText}>{section.hint}</Text>
           <TextInput
             style={styles.textArea}
-            placeholder={section.placeholder}
-            placeholderTextColor={colors.fontMuted}
             value={wishTexts[section.key]}
             onChangeText={text => setWishText(section.key, text)}
             multiline
@@ -639,6 +661,7 @@ const ManifestScreen: React.FC<TabScreenProps<'Goals'>> = ({navigation}) => {
         <>
           <Divider />
           <Text style={styles.timelineLabel}>How many days do you want to give this?</Text>
+          <Text style={styles.hintText}>Pick 30, 60, or 90 days, whichever fits your goal.</Text>
           <View style={styles.timelinePills}>
             {[30, 60, 90].map(days => (
               <Pill
@@ -936,6 +959,20 @@ const createStyles = (colors: ThemeColors) =>
       lineHeight: 22,
       color: colors.fontMuted,
       marginBottom: spacing.sm,
+    },
+    hintText: {
+      fontFamily: fontFamily.body,
+      fontSize: fontSize.base,
+      lineHeight: 22,
+      color: colors.fontSecondary,
+      marginBottom: spacing.md,
+    },
+    recapText: {
+      fontFamily: fontFamily.body,
+      fontSize: fontSize.base,
+      lineHeight: 22,
+      color: colors.fontMain,
+      marginBottom: spacing.md,
     },
     reflectButton: {
       alignSelf: 'flex-start',
